@@ -3,6 +3,13 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 
+// Idempotent (INSERT OR IGNORE + per-category nominee count check) - safe to
+// run on every boot. This means a fresh production database (e.g. a new
+// Render deploy, which starts empty) seeds itself automatically without
+// needing shell/CLI access to the server, while an already-seeded database
+// (like local dev) just logs "already exist" and changes nothing.
+require("./seed");
+
 const mtn = require("./mtnMomo");
 const mailer = require("./mailer");
 const { EVENT_NAME, EVENT_SUBTITLE, ORG_NAME, EVENT_DATE_LINE } = require("./ticket");
