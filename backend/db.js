@@ -1,7 +1,14 @@
+const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const db = new Database(path.join(__dirname, "data", "rosa.db"));
+// DATA_DIR lets a persistent disk be mounted anywhere in production (e.g. a
+// Render disk at /var/data) without changing local dev, which just uses
+// backend/data as before.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const db = new Database(path.join(DATA_DIR, "rosa.db"));
 db.pragma("journal_mode = WAL");
 
 db.exec(`

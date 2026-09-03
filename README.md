@@ -128,6 +128,61 @@ backend at `http://localhost:4000/api` by default — change `API_BASE` in
 `assets/js/api.js` (or set `window.ROSA_API_BASE` before that script loads)
 if you deploy the backend elsewhere.
 
+## Deployment: backend on Render, frontend on Vercel
+
+The backend uses a local SQLite file and local disk for gallery uploads, both
+of which need real persistent storage — Render supports that (a mounted
+disk), Vercel's serverless functions don't (their filesystem is wiped between
+invocations). So the backend goes on **Render**, and the static frontend
+goes on **Vercel**. Deploying it the other way round would silently lose
+every order, vote, and uploaded photo.
+
+### 1. Backend → Render
+
+1. Push this repo to GitHub (already done), then in the
+   [Render dashboard](https://dashboard.render.com), click **New → Blueprint**
+   and point it at the repo — it will read `render.yaml` at the repo root
+   and set up a web service (rooted at `backend/`) with a 1GB persistent disk
+   mounted at `/var/data`.
+   - The disk requires a paid instance type — `render.yaml` is set to the
+     **Starter** plan (currently ~$7/month). Render's free tier can't attach
+     a persistent disk at all, so free would silently lose data again.
+2. When prompted for environment variables (all marked `sync: false` in
+   `render.yaml` so they're never stored in the repo), paste in the same
+   values as your local `backend/.env`: `ADMIN_KEY`, `MOMO_NUMBER`,
+   `VOTE_PRICE_GHS`, the three `TICKET_*_PRICE_GHS`, the `MTN_*` keys,
+   `GMAIL_USER`, `GMAIL_APP_PASSWORD`. Leave `FRONTEND_ORIGIN` for step 3.
+   **Change `ADMIN_KEY` from the placeholder before going live.**
+3. Once deployed, Render gives you a URL like
+   `https://amor-regius-backend.onrender.com`. Note it for step 4.
+4. First deploy only: `data/` and `uploads/gallery/` on the new disk start
+   empty — re-run `npm run seed` from a Render shell (Dashboard → Shell) to
+   seed nominee categories, or restore them from your existing
+   `backend/data/rosa.db` if you want to bring real votes/orders across.
+
+### 2. Frontend → Vercel
+
+1. In the [Vercel dashboard](https://vercel.com/new), import the same GitHub
+   repo. When it asks for the **Root Directory**, set it to `frontend` (this
+   is what `frontend/vercel.json` is for — a plain static site, no build
+   command needed).
+2. Before deploying, open `frontend/assets/js/config.js` and set
+   `RENDER_BACKEND_URL` to the exact URL from Render step 3 above, then
+   commit and push (Vercel will redeploy automatically). Local dev
+   (`localhost`/`127.0.0.1`) is unaffected — it always talks to
+   `http://localhost:4000` regardless of this value.
+3. Vercel gives you a URL like `https://amor-regius.vercel.app`. Add it (and
+   your custom domain, if any) as `FRONTEND_ORIGIN` in Render's environment
+   variables — comma-separated if more than one — so the backend's CORS only
+   accepts requests from your real frontend instead of any origin.
+
+### Keeping both in sync after this
+
+- Any push to the branch Render/Vercel are watching redeploys both
+  automatically.
+- If you ever change `RENDER_BACKEND_URL` in `config.js` or `FRONTEND_ORIGIN`
+  on Render, both sides need the matching update or CORS will block requests.
+
 ## Editing nominees
 
 Real nominee names aren't in yet — edit the `CATEGORIES` list in

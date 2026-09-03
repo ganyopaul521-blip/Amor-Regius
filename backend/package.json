@@ -4,6 +4,9 @@
   "description": "Backend API for Amor Regius (Dinner & Awards Night) - ticket purchase, awards voting, and ticket delivery",
   "main": "server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "seed": "node seed.js",

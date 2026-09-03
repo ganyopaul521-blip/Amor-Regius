@@ -12,9 +12,30 @@ const adminRouter = require("./routes/admin");
 const galleryRouter = require("./routes/gallery");
 
 const app = express();
-app.use(cors());
+
+// FRONTEND_ORIGIN restricts CORS to the deployed frontend in production
+// (comma-separated for multiple, e.g. a Vercel prod + preview URL). Left
+// unset, it stays open - so local dev and any not-yet-configured deploy
+// keep working exactly as before.
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(
+  cors(
+    allowedOrigins.length
+      ? { origin: allowedOrigins }
+      : undefined
+  )
+);
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+const UPLOADS_ROOT = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, "uploads")
+  : path.join(__dirname, "uploads");
+app.use("/uploads", express.static(UPLOADS_ROOT));
+
+app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 app.get("/api/config", (req, res) => {
   res.json({

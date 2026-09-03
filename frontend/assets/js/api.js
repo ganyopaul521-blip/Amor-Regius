@@ -1,5 +1,5 @@
-// Base URL of the backend API. Change this if the backend is deployed
-// somewhere other than localhost:4000.
+// Base URL of the backend API - set by config.js (loaded before this file
+// on every page), which picks localhost or the deployed Render backend.
 const API_BASE = window.ROSA_API_BASE || "http://localhost:4000/api";
 
 async function apiGet(path) {

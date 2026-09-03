@@ -10,7 +10,14 @@ const mtn = require("../mtnMomo");
 
 const router = express.Router();
 
-const GALLERY_DIR = path.join(__dirname, "..", "uploads", "gallery");
+// Same DATA_DIR convention as db.js - defaults to the local uploads folder
+// for dev, but on Render this resolves under the mounted persistent disk so
+// uploaded photos survive deploys/restarts.
+const UPLOADS_ROOT = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, "uploads")
+  : path.join(__dirname, "..", "uploads");
+const GALLERY_DIR = path.join(UPLOADS_ROOT, "gallery");
+fs.mkdirSync(GALLERY_DIR, { recursive: true });
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 // No fileFilter here deliberately: rejecting mid-stream causes multer to stop

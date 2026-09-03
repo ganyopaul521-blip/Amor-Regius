@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: amor-regius-backend
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: amor-regius-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: MOMO_NUMBER
+        sync: false
+      - key: VOTE_PRICE_GHS
+        sync: false
+      - key: TICKET_SINGLE_PRICE_GHS
+        sync: false
+      - key: TICKET_DOUBLE_PRICE_GHS
+        sync: false
+      - key: TICKET_EXECUTIVE_PRICE_GHS
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
+      - key: MTN_BASE_URL
+        sync: false
+      - key: MTN_TARGET_ENVIRONMENT
+        sync: false
+      - key: MTN_CURRENCY
+        sync: false
+      - key: MTN_SUBSCRIPTION_KEY
+        sync: false
+      - key: MTN_API_USER
+        sync: false
+      - key: MTN_API_KEY
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
