@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const mtn = require("../mtnMomo");
+const paystack = require("../paystack");
 const { generateTicketPng, EVENT_NAME, EVENT_SUBTITLE } = require("../ticket");
 const mailer = require("../mailer");
 
@@ -19,10 +19,12 @@ router.get("/pricing", (req, res) => {
   res.json({ prices: PRICES });
 });
 
-// POST /api/tickets - creates a pending order and asks MTN MoMo to push a
-// payment prompt to the buyer's phone. The order is only marked 'confirmed'
-// once polling (see /:id/status) reports MTN's payment as successful, at
-// which point the ticket is emailed automatically (see maybeSendTicket).
+// POST /api/tickets - creates a pending order and hands back a Paystack
+// reference for the frontend to open its payment popup with (card or Ghana
+// Mobile Money, any network). The order is only marked 'confirmed' once
+// polling (see /:id/status) verifies the payment against Paystack's own
+// record, at which point the ticket is emailed automatically (see
+// maybeSendTicket) - nothing here trusts the frontend's own say-so.
 router.post("/", async (req, res) => {
   const { buyerName, buyerPhone, buyerEmail, ticketType, quantity } = req.body || {};
 
@@ -42,14 +44,17 @@ router.post("/", async (req, res) => {
   if (!Number.isInteger(qty) || qty < 1) {
     return res.status(400).json({ error: "quantity must be a positive integer" });
   }
+  if (!paystack.isConfigured()) {
+    return res.status(502).json({ error: "Payments are not configured yet. Set PAYSTACK_SECRET_KEY in backend/.env." });
+  }
 
   const amountGhs = qty * PRICES[ticketType];
-  const clientReference = mtn.newReferenceId();
+  const clientReference = paystack.newReferenceId();
 
   const insert = db
     .prepare(
       `INSERT INTO ticket_orders (buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, network, client_reference, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'mtn-gh', ?, 'pending')`
+       VALUES (?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
     )
     .run(
       String(buyerName).trim(),
@@ -62,29 +67,12 @@ router.post("/", async (req, res) => {
     );
 
   const orderId = insert.lastInsertRowid;
-
-  try {
-    await mtn.requestToPay({
-      referenceId: clientReference,
-      msisdn: String(buyerPhone).trim(),
-      amountGhs,
-      externalId: `TCK-${orderId}`,
-      // MTN's sandbox rejects payerMessage/payeeNote containing '(' ')' or '#'
-      // (a WAF-level block, confirmed by testing - not documented anywhere).
-      payerMessage: `${EVENT_NAME} - ${ticketType} ticket x${qty}`,
-      payeeNote: `Order ${orderId}`,
-    });
-
-    const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(orderId);
-    res.status(201).json({
-      ok: true,
-      order,
-      message: "Check your phone and approve the MTN Mobile Money payment prompt.",
-    });
-  } catch (err) {
-    db.prepare("UPDATE ticket_orders SET status = 'rejected' WHERE id = ?").run(orderId);
-    res.status(502).json({ error: err.message || "Could not start the mobile money payment" });
-  }
+  const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(orderId);
+  res.status(201).json({
+    ok: true,
+    order,
+    message: "Complete your payment in the Paystack window to confirm your order.",
+  });
 });
 
 // Generates the ticket and emails it, exactly once per order (guarded by
@@ -110,10 +98,10 @@ async function maybeSendTicket(order) {
 }
 
 // GET /api/tickets/:id/status?ref=<clientReference> - polled by the frontend
-// while the buyer approves the prompt on their phone. If still pending in
-// our DB, this actively checks MTN's live status and updates accordingly -
-// there's no webhook, so this poll is what actually confirms payment. The
-// first poll to see 'confirmed' triggers the ticket email.
+// while the buyer completes the Paystack popup. If still pending in our DB,
+// this actively verifies against Paystack's own record and updates
+// accordingly - there's no webhook, so this poll is what actually confirms
+// payment. The first poll to see 'confirmed' triggers the ticket email.
 router.get("/:id/status", async (req, res) => {
   const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(req.params.id);
   if (!order || order.client_reference !== req.query.ref) {
@@ -123,13 +111,20 @@ router.get("/:id/status", async (req, res) => {
   let current = order;
   if (order.status === "pending") {
     try {
-      const result = await mtn.getStatus(order.client_reference);
+      const result = await paystack.verifyTransaction(order.client_reference);
+      // A successful Paystack transaction for a *different* amount than this
+      // order expects (e.g. a tampered client-side popup call) is never
+      // trusted as a real confirmation - amount_ghs was fixed server-side at
+      // order creation, before any client-controlled value existed.
+      const amountMatches = result.amountGhs == null || Math.abs(result.amountGhs - order.amount_ghs) < 0.01;
+      const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
+
       db.prepare(
         "UPDATE ticket_orders SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ?"
-      ).run(result.status, result.financialTransactionId, JSON.stringify(result), order.id);
+      ).run(finalStatus, result.transactionId, JSON.stringify(result), order.id);
       current = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
     } catch (err) {
-      // MTN status check hiccup - report last known state, frontend will poll again
+      // Paystack status check hiccup - report last known state, frontend will poll again
     }
   }
 

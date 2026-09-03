@@ -2,6 +2,18 @@ let selectedType = null;
 let selectedPrice = 0;
 let quantity = 1;
 let pollTimer = null;
+let paystackPublicKey = null;
+
+// Needed before the Paystack popup can open - fetched once on page load.
+async function loadPaystackKey() {
+  try {
+    const cfg = await apiGet("/config");
+    paystackPublicKey = cfg.paystackPublicKey;
+  } catch (err) {
+    // handled at submit time if still null
+  }
+}
+loadPaystackKey();
 
 const optionEls = document.querySelectorAll(".ticket-option");
 const qtyValueEl = document.getElementById("qty-value");
@@ -127,9 +139,9 @@ function pollOrderStatus(order) {
     if (Date.now() - startedAt > TIMEOUT_MS) {
       stopPolling();
       statusText.textContent =
-        "Still waiting for confirmation. If you approved the prompt, your order will update shortly - you can check back later.";
+        "Still waiting for confirmation. If you completed the payment, your order will update shortly - you can check back later.";
       submitBtn.disabled = false;
-      submitBtn.textContent = "Pay with MTN Mobile Money";
+      submitBtn.textContent = "Pay Now";
       return;
     }
 
@@ -141,20 +153,27 @@ function pollOrderStatus(order) {
         setStep(5);
         showReceipt(order, data);
         submitBtn.disabled = false;
-        submitBtn.textContent = "Pay with MTN Mobile Money";
+        submitBtn.textContent = "Pay Now";
       } else if (data.status === "rejected") {
         stopPolling();
         statusBox.classList.add("hidden");
         setStep(3);
         showAlert("Payment was not completed. Please try again.", "error");
         submitBtn.disabled = false;
-        submitBtn.textContent = "Pay with MTN Mobile Money";
+        submitBtn.textContent = "Pay Now";
       }
       // status still 'pending' -> keep polling, stay on step 4 (approve on phone)
     } catch (err) {
       // transient network hiccup - keep polling until timeout
     }
   }, 3000);
+}
+
+function resetSubmitUi() {
+  statusBox.classList.add("hidden");
+  setStep(2);
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Pay Now";
 }
 
 form.addEventListener("submit", async (e) => {
@@ -165,19 +184,21 @@ form.addEventListener("submit", async (e) => {
     showAlert("Please select a ticket type.", "error");
     return;
   }
+  if (!paystackPublicKey) {
+    showAlert("Payments are not available right now. Please try again shortly.", "error");
+    return;
+  }
 
   const buyerName = document.getElementById("buyerName").value.trim();
   const buyerPhone = document.getElementById("buyerPhone").value.trim();
   const buyerEmail = document.getElementById("buyerEmail").value.trim();
 
   submitBtn.disabled = true;
-  submitBtn.textContent = "Sending payment request...";
+  submitBtn.textContent = "Preparing order...";
   setStep(3);
-  statusBox.classList.remove("hidden");
-  statusText.textContent = "Sending payment request...";
 
   try {
-    const { order, message } = await apiPost("/tickets", {
+    const { order } = await apiPost("/tickets", {
       buyerName,
       buyerPhone,
       buyerEmail,
@@ -185,16 +206,29 @@ form.addEventListener("submit", async (e) => {
       quantity,
     });
 
-    setStep(4);
-    statusText.textContent = `${message} (Order #${order.id}, GHS ${order.amount_ghs})`;
-    submitBtn.textContent = "Waiting for approval...";
-    pollOrderStatus(order);
+    const handler = PaystackPop.setup({
+      key: paystackPublicKey,
+      email: buyerEmail,
+      amount: Math.round(order.amount_ghs * 100),
+      currency: "GHS",
+      ref: order.client_reference,
+      metadata: { orderId: order.id, buyerName },
+      callback: function () {
+        setStep(4);
+        statusBox.classList.remove("hidden");
+        statusText.textContent = `Confirming your payment... (Order #${order.id}, GHS ${order.amount_ghs})`;
+        submitBtn.textContent = "Confirming payment...";
+        pollOrderStatus(order);
+      },
+      onClose: function () {
+        resetSubmitUi();
+      },
+    });
+    handler.openIframe();
+    submitBtn.textContent = "Waiting for payment window...";
   } catch (err) {
-    statusBox.classList.add("hidden");
-    setStep(2);
     showAlert(err.message || "Something went wrong. Please try again.", "error");
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Pay with MTN Mobile Money";
+    resetSubmitUi();
   }
 });
 

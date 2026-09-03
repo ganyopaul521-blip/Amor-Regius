@@ -105,6 +105,13 @@ if (!hasColumn("ticket_orders", "ticket_sent_at")) {
   db.exec(`ALTER TABLE ticket_orders ADD COLUMN ticket_sent_at TEXT`);
 }
 
+// Paystack needs an email to charge a vote (unlike the old MTN push-to-phone
+// flow, which only needed a number) - voter_phone stays for reference but is
+// no longer required.
+if (!hasColumn("vote_payments", "voter_email")) {
+  db.exec(`ALTER TABLE vote_payments ADD COLUMN voter_email TEXT`);
+}
+
 if (!hasColumn("vote_payments", "status")) {
   // The column default must be 'pending' so it applies correctly to every
   // vote inserted from now on. Rows that already existed before this

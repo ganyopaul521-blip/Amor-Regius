@@ -14,8 +14,6 @@ services:
     envVars:
       - key: DATA_DIR
         value: /var/data
-      - key: MOMO_NUMBER
-        sync: false
       - key: VOTE_PRICE_GHS
         sync: false
       - key: TICKET_SINGLE_PRICE_GHS
@@ -26,17 +24,9 @@ services:
         sync: false
       - key: ADMIN_KEY
         sync: false
-      - key: MTN_BASE_URL
+      - key: PAYSTACK_SECRET_KEY
         sync: false
-      - key: MTN_TARGET_ENVIRONMENT
-        sync: false
-      - key: MTN_CURRENCY
-        sync: false
-      - key: MTN_SUBSCRIPTION_KEY
-        sync: false
-      - key: MTN_API_USER
-        sync: false
-      - key: MTN_API_KEY
+      - key: PAYSTACK_PUBLIC_KEY
         sync: false
       - key: GMAIL_USER
         sync: false

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Vote — Amor Regius</title>
-<meta name="description" content="Cast your vote for the Amor Regius award categories. Paid securely with MTN Mobile Money." />
+<meta name="description" content="Cast your vote for the Amor Regius award categories. Paid securely by card or Mobile Money via Paystack." />
 <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
@@ -46,7 +46,7 @@
         <div class="flourish-divider">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L15 12 L12 22 L9 12 Z" fill="currentColor"/></svg>
         </div>
-        <p class="muted">Select a nominee, choose how many votes to cast, then pay with MTN Mobile Money to submit. Each vote costs <strong id="vote-price">GHS 1</strong>.</p>
+        <p class="muted">Select a nominee, choose how many votes to cast, then pay by card or Mobile Money to submit. Each vote costs <strong id="vote-price">GHS 1</strong>.</p>
         <div id="categories"></div>
       </div>
 
@@ -78,16 +78,19 @@
             <input type="text" id="voterName" autocomplete="name" />
           </div>
           <div class="field">
-            <label for="voterPhone">MTN Mobile Money Number (to be charged)</label>
-            <input type="tel" id="voterPhone" placeholder="0XXXXXXXXX" required autocomplete="tel" />
-            <p class="muted">Payments are charged via MTN Mobile Money only.</p>
+            <label for="voterEmail">Email (for your payment receipt)</label>
+            <input type="email" id="voterEmail" required autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="voterPhone">Phone Number (optional)</label>
+            <input type="tel" id="voterPhone" placeholder="0XXXXXXXXX" autocomplete="tel" />
           </div>
 
-          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Pay with MTN Mobile Money</button>
+          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Pay Now</button>
 
           <p class="secure-note">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-            We never ask for or store your Mobile Money PIN.
+            Payments are handled securely by Paystack. We never see or store your card or Mobile Money PIN.
           </p>
 
           <div id="payment-status" class="payment-box processing hidden">
@@ -131,6 +134,7 @@
   <script src="assets/js/config.js"></script>
   <script src="assets/js/api.js"></script>
   <script src="assets/js/main.js"></script>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
   <script src="assets/js/vote.js"></script>
 </body>
 </html>

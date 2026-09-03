@@ -126,7 +126,7 @@ function initAdminName() {
 const VIEW_META = {
   dashboard: { title: "Dashboard", subtitle: "Overview of Amor Regius performance" },
   orders: { title: "Ticket Orders", subtitle: "Every ticket purchase, in one place" },
-  payments: { title: "Payments", subtitle: "MTN Mobile Money transaction monitoring" },
+  payments: { title: "Payments", subtitle: "Paystack transaction monitoring" },
   attendees: { title: "Attendees", subtitle: "Who's confirmed for the night" },
   voting: { title: "Voting", subtitle: "Award category standings and vote payments" },
   gallery: { title: "Gallery", subtitle: "Manage the public photo gallery" },
@@ -484,13 +484,13 @@ function renderRecentOrdersTable() {
 
 function renderSystemHealth() {
   const s = state.stats;
-  const mtn = s?.services?.mtnConfigured;
+  const paystack = s?.services?.paystackConfigured;
   const email = s?.services?.emailConfigured;
   return `
     <div class="health-list">
       <div class="health-row"><span>API</span><span class="health-status health-ok">Operational</span></div>
       <div class="health-row"><span>Database</span><span class="health-status health-ok">Connected</span></div>
-      <div class="health-row"><span>MTN Mobile Money</span><span class="health-status ${mtn ? "health-ok" : "health-off"}">${mtn ? "Configured" : "Not configured"}</span></div>
+      <div class="health-row"><span>Paystack</span><span class="health-status ${paystack ? "health-ok" : "health-off"}">${paystack ? "Configured" : "Not configured"}</span></div>
       <div class="health-row"><span>Email Delivery</span><span class="health-status ${email ? "health-ok" : "health-off"}">${email ? "Configured" : "Not configured"}</span></div>
     </div>`;
 }
@@ -601,7 +601,7 @@ function renderOrders() {
               <th class="no-sort">Customer</th>
               <th data-sort="ticket_type" class="${t.sortKey === "ticket_type" ? "sorted" : ""}">Ticket <span class="sort-arrow">${sortArrow("ticket_type")}</span></th>
               <th data-sort="amount_ghs" class="${t.sortKey === "amount_ghs" ? "sorted" : ""}">Amount <span class="sort-arrow">${sortArrow("amount_ghs")}</span></th>
-              <th class="no-sort">MTN Transaction</th>
+              <th class="no-sort">Payment Ref</th>
               <th data-sort="status" class="${t.sortKey === "status" ? "sorted" : ""}">Status <span class="sort-arrow">${sortArrow("status")}</span></th>
               <th data-sort="created_at" class="${t.sortKey === "created_at" ? "sorted" : ""}">Date <span class="sort-arrow">${sortArrow("created_at")}</span></th>
               <th class="no-sort">Actions</th>
@@ -616,7 +616,7 @@ function renderOrders() {
                 <td data-label="Customer"><div class="cell-customer"><strong>${escapeHtml(o.buyer_name)}</strong><span>${escapeHtml(o.buyer_email || o.buyer_phone)}</span></div></td>
                 <td data-label="Ticket">${ticketTypeLabel(o.ticket_type)} &times;${o.quantity}</td>
                 <td data-label="Amount">${money(o.amount_ghs)}</td>
-                <td data-label="MTN Transaction"><span class="cell-mono">${o.financial_transaction_id || "-"}</span></td>
+                <td data-label="Payment Ref"><span class="cell-mono">${o.financial_transaction_id || "-"}</span></td>
                 <td data-label="Status">${statusBadge(o.status)}</td>
                 <td data-label="Date">${formatDateTime(o.created_at)}</td>
                 <td data-label="Actions">
@@ -709,9 +709,9 @@ function openOrderDrawer(orderId) {
         </div>
         <div class="detail-group">
           <div class="detail-group-label">Payment</div>
-          <div class="detail-row"><span>Provider</span><span>MTN Mobile Money</span></div>
+          <div class="detail-row"><span>Provider</span><span>Paystack</span></div>
           <div class="detail-row"><span>Status</span><span>${statusBadge(order.status)}</span></div>
-          <div class="detail-row"><span>MTN Transaction ID</span><span>${order.financial_transaction_id || "Not yet available"}</span></div>
+          <div class="detail-row"><span>Payment Ref ID</span><span>${order.financial_transaction_id || "Not yet available"}</span></div>
           <div class="detail-row"><span>Reference</span><span class="cell-mono">${order.client_reference}</span></div>
         </div>
         <div class="detail-group">
@@ -839,7 +839,7 @@ function renderPayments() {
       <div class="admin-panel"><div class="state-block">
         <div class="state-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg></div>
         <h3>No Payments Found</h3>
-        <p>MTN Mobile Money transactions will appear here once customers start paying.</p>
+        <p>Paystack transactions will appear here once customers start paying.</p>
       </div></div>`;
     return;
   }
@@ -856,14 +856,14 @@ function renderPayments() {
   const { rows: pageRows, page, totalPages, total } = paginate(rows, t.page, state.PAGE_SIZE);
   t.page = page;
 
-  const mtnConfigured = s?.services?.mtnConfigured;
+  const paystackConfigured = s?.services?.paystackConfigured;
 
   el.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi-card">
-        <div class="kpi-label">MTN API Status</div>
+        <div class="kpi-label">Paystack API Status</div>
         <div class="kpi-value" style="font-size:1.1rem">
-          <span class="health-status ${mtnConfigured ? "health-ok" : "health-off"}">${mtnConfigured ? "Connected" : "Status unavailable"}</span>
+          <span class="health-status ${paystackConfigured ? "health-ok" : "health-off"}">${paystackConfigured ? "Connected" : "Status unavailable"}</span>
         </div>
       </div>
       <div class="kpi-card"><div class="kpi-label">Payment Requests</div><div class="kpi-value">${s.payments.totalRequests}</div></div>
@@ -891,7 +891,7 @@ function renderPayments() {
       </div>
       <div class="table-scroll">
         <table class="admin-table">
-          <thead><tr><th class="no-sort">Reference</th><th class="no-sort">Customer</th><th class="no-sort">Item</th><th class="no-sort">Amount</th><th class="no-sort">Provider</th><th class="no-sort">MTN Transaction</th><th class="no-sort">Status</th><th class="no-sort">Date</th></tr></thead>
+          <thead><tr><th class="no-sort">Reference</th><th class="no-sort">Customer</th><th class="no-sort">Item</th><th class="no-sort">Amount</th><th class="no-sort">Provider</th><th class="no-sort">Payment Ref</th><th class="no-sort">Status</th><th class="no-sort">Date</th></tr></thead>
           <tbody>
             ${pageRows
               .map(
@@ -901,8 +901,8 @@ function renderPayments() {
                 <td data-label="Customer"><div class="cell-customer"><strong>${escapeHtml(r.customer)}</strong><span>${escapeHtml(r.email)}</span></div></td>
                 <td data-label="Item">${escapeHtml(r.item)}</td>
                 <td data-label="Amount">${money(r.amount)}</td>
-                <td data-label="Provider">MTN MoMo</td>
-                <td data-label="MTN Transaction"><span class="cell-mono">${r.txn || "-"}</span></td>
+                <td data-label="Provider">Paystack</td>
+                <td data-label="Payment Ref"><span class="cell-mono">${r.txn || "-"}</span></td>
                 <td data-label="Status">${statusBadge(r.status)}</td>
                 <td data-label="Date">${formatDateTime(r.date)}</td>
               </tr>`
@@ -1069,7 +1069,7 @@ function renderVoting() {
           ? `<p class="muted">No vote payments yet.</p>`
           : `<div class="table-scroll">
         <table class="admin-table">
-          <thead><tr><th class="no-sort">Voter</th><th class="no-sort">Nominee</th><th class="no-sort">Votes</th><th class="no-sort">Amount</th><th class="no-sort">MTN Transaction</th><th class="no-sort">Status</th><th class="no-sort">Date</th><th class="no-sort">Action</th></tr></thead>
+          <thead><tr><th class="no-sort">Voter</th><th class="no-sort">Nominee</th><th class="no-sort">Votes</th><th class="no-sort">Amount</th><th class="no-sort">Payment Ref</th><th class="no-sort">Status</th><th class="no-sort">Date</th><th class="no-sort">Action</th></tr></thead>
           <tbody>
             ${state.votePayments
               .map(
@@ -1079,7 +1079,7 @@ function renderVoting() {
                 <td data-label="Nominee">${escapeHtml(p.nominee_name)} <span class="muted">(${escapeHtml(p.category_name)})</span></td>
                 <td data-label="Votes">${p.quantity}</td>
                 <td data-label="Amount">${money(p.amount_ghs)}</td>
-                <td data-label="MTN Transaction"><span class="cell-mono">${p.financial_transaction_id || "-"}</span></td>
+                <td data-label="Payment Ref"><span class="cell-mono">${p.financial_transaction_id || "-"}</span></td>
                 <td data-label="Status">${statusBadge(p.status)}</td>
                 <td data-label="Date">${formatDateTime(p.created_at)}</td>
                 <td data-label="Action">
@@ -1234,11 +1234,11 @@ function renderReports() {
   document.getElementById("print-report").addEventListener("click", () => window.print());
   document.getElementById("export-orders-csv").addEventListener("click", () => {
     const rows = state.orders.map((o) => [o.id, o.buyer_name, o.buyer_email, o.ticket_type, o.quantity, o.amount_ghs, o.status, o.financial_transaction_id, o.created_at]);
-    downloadCsv("amor-regius-ticket-orders.csv", ["Order ID", "Customer", "Email", "Ticket Type", "Quantity", "Amount (GHS)", "Status", "MTN Transaction", "Date"], rows);
+    downloadCsv("amor-regius-ticket-orders.csv", ["Order ID", "Customer", "Email", "Ticket Type", "Quantity", "Amount (GHS)", "Status", "Payment Ref", "Date"], rows);
   });
   document.getElementById("export-payments-csv").addEventListener("click", () => {
     const rows = getUnifiedPayments().map((r) => [r.id, r.customer, r.email, r.item, r.amount, r.txn, r.status, r.date]);
-    downloadCsv("amor-regius-payments.csv", ["Reference", "Customer", "Email", "Item", "Amount (GHS)", "MTN Transaction", "Status", "Date"], rows);
+    downloadCsv("amor-regius-payments.csv", ["Reference", "Customer", "Email", "Item", "Amount (GHS)", "Payment Ref", "Status", "Date"], rows);
   });
   document.getElementById("export-votes-csv").addEventListener("click", () => {
     const rows = state.votePayments.map((p) => [p.id, p.voter_name, p.voter_phone, p.category_name, p.nominee_name, p.quantity, p.amount_ghs, p.status, p.created_at]);
@@ -1275,7 +1275,7 @@ async function renderSettings() {
       </div>
       <div class="admin-panel">
         <div class="admin-panel-head"><h2>Service Configuration</h2></div>
-        <div class="settings-row"><div class="settings-row-label">MTN Mobile Money</div><span class="health-status ${config.mtnMomoConfigured ? "health-ok" : "health-off"}">${config.mtnMomoConfigured ? "Configured" : "Not configured"}</span></div>
+        <div class="settings-row"><div class="settings-row-label">Paystack</div><span class="health-status ${config.paystackConfigured ? "health-ok" : "health-off"}">${config.paystackConfigured ? "Configured" : "Not configured"}</span></div>
         <div class="settings-row"><div class="settings-row-label">Ticket Email Delivery</div><span class="health-status ${config.emailConfigured ? "health-ok" : "health-off"}">${config.emailConfigured ? "Configured" : "Not configured"}</span></div>
         <p class="muted" style="margin-top:10px">Credentials and secrets are never exposed here - only whether each service is configured.</p>
       </div>

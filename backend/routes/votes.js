@@ -1,10 +1,11 @@
 const express = require("express");
 const db = require("../db");
-const mtn = require("../mtnMomo");
+const paystack = require("../paystack");
 const { EVENT_NAME } = require("../ticket");
 
 const router = express.Router();
 const VOTE_PRICE_GHS = Number(process.env.VOTE_PRICE_GHS || 1);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // GET /api/votes/nominees - categories with nominees and live (confirmed) vote counts
 router.get("/nominees", (req, res) => {
@@ -32,18 +33,23 @@ router.get("/results", (req, res) => {
   res.json({ categories: result });
 });
 
-// POST /api/votes - creates a pending vote payment and asks MTN MoMo to push
-// a payment prompt to the voter's phone. Votes only count toward the
-// nominee once polling (see /:id/status) reports MTN's payment as successful.
+// POST /api/votes - creates a pending vote payment and hands back a
+// Paystack reference for the frontend to open its payment popup with (card
+// or Ghana Mobile Money, any network). Votes only count toward the nominee
+// once polling (see /:id/status) verifies the payment against Paystack's
+// own record.
 router.post("/", async (req, res) => {
-  const { nomineeId, quantity, voterName, voterPhone } = req.body || {};
+  const { nomineeId, quantity, voterName, voterPhone, voterEmail } = req.body || {};
 
   const qty = Number(quantity);
   if (!nomineeId || !Number.isInteger(qty) || qty < 1) {
     return res.status(400).json({ error: "nomineeId and a positive integer quantity are required" });
   }
-  if (!voterPhone || !String(voterPhone).trim()) {
-    return res.status(400).json({ error: "voterPhone is required to charge mobile money" });
+  if (!voterEmail || !EMAIL_RE.test(String(voterEmail).trim())) {
+    return res.status(400).json({ error: "A valid voterEmail is required to process payment" });
+  }
+  if (!paystack.isConfigured()) {
+    return res.status(502).json({ error: "Payments are not configured yet. Set PAYSTACK_SECRET_KEY in backend/.env." });
   }
 
   const nominee = db.prepare("SELECT id, name FROM nominees WHERE id = ?").get(nomineeId);
@@ -52,48 +58,39 @@ router.post("/", async (req, res) => {
   }
 
   const amountGhs = qty * VOTE_PRICE_GHS;
-  const clientReference = mtn.newReferenceId();
+  const clientReference = paystack.newReferenceId();
 
   const insert = db
     .prepare(
-      `INSERT INTO vote_payments (nominee_id, quantity, amount_ghs, voter_name, voter_phone, network, client_reference, status)
-       VALUES (?, ?, ?, ?, ?, 'mtn-gh', ?, 'pending')`
+      `INSERT INTO vote_payments (nominee_id, quantity, amount_ghs, voter_name, voter_phone, voter_email, network, client_reference, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
     )
-    .run(nomineeId, qty, amountGhs, voterName || null, String(voterPhone).trim(), clientReference);
+    .run(
+      nomineeId,
+      qty,
+      amountGhs,
+      voterName || null,
+      voterPhone ? String(voterPhone).trim() : null,
+      String(voterEmail).trim(),
+      clientReference
+    );
 
   const paymentId = insert.lastInsertRowid;
 
-  try {
-    await mtn.requestToPay({
-      referenceId: clientReference,
-      msisdn: String(voterPhone).trim(),
-      amountGhs,
-      externalId: `VOTE-${paymentId}`,
-      // MTN's sandbox rejects payerMessage/payeeNote containing '(' ')' or
-      // '#' (a WAF-level block, confirmed by testing - not documented
-      // anywhere), hence sanitizeNote() on the nominee's (admin-entered) name.
-      payerMessage: `${EVENT_NAME} - ${qty} vote for ${mtn.sanitizeNote(nominee.name)}`,
-      payeeNote: `Vote payment ${paymentId}`,
-    });
-
-    res.status(201).json({
-      ok: true,
-      paymentId,
-      clientReference,
-      amountGhs,
-      message: "Check your phone and approve the MTN Mobile Money payment prompt.",
-    });
-  } catch (err) {
-    db.prepare("UPDATE vote_payments SET status = 'rejected' WHERE id = ?").run(paymentId);
-    res.status(502).json({ error: err.message || "Could not start the mobile money payment" });
-  }
+  res.status(201).json({
+    ok: true,
+    paymentId,
+    clientReference,
+    amountGhs,
+    message: "Complete your payment in the Paystack window to submit your vote.",
+  });
 });
 
 // GET /api/votes/:id/status?ref=<clientReference> - polled by the frontend
-// while the voter approves the prompt on their phone. If still pending in
-// our DB, this actively checks MTN's live status and, on first confirmation,
-// adds the vote(s) to the nominee's tally (guarded so a repeat poll can't
-// double count).
+// while the voter completes the Paystack popup. If still pending in our DB,
+// this actively verifies against Paystack's own record and, on first
+// confirmation, adds the vote(s) to the nominee's tally (guarded so a repeat
+// poll can't double count).
 router.get("/:id/status", async (req, res) => {
   const payment = db.prepare("SELECT * FROM vote_payments WHERE id = ?").get(req.params.id);
   if (!payment || payment.client_reference !== req.query.ref) {
@@ -103,21 +100,25 @@ router.get("/:id/status", async (req, res) => {
   let current = payment;
   if (payment.status === "pending") {
     try {
-      const result = await mtn.getStatus(payment.client_reference);
+      const result = await paystack.verifyTransaction(payment.client_reference);
+      // Same anti-tamper guard as tickets.js - amount_ghs was fixed
+      // server-side at creation, never trust a client-controlled value.
+      const amountMatches = result.amountGhs == null || Math.abs(result.amountGhs - payment.amount_ghs) < 0.01;
+      const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
 
       const apply = db.transaction(() => {
-        if (payment.status === "pending" && result.status === "confirmed") {
+        if (payment.status === "pending" && finalStatus === "confirmed") {
           db.prepare("UPDATE nominees SET votes = votes + ? WHERE id = ?").run(payment.quantity, payment.nominee_id);
         }
         db.prepare(
           "UPDATE vote_payments SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ?"
-        ).run(result.status, result.financialTransactionId, JSON.stringify(result), payment.id);
+        ).run(finalStatus, result.transactionId, JSON.stringify(result), payment.id);
       });
       apply();
 
       current = db.prepare("SELECT * FROM vote_payments WHERE id = ?").get(payment.id);
     } catch (err) {
-      // MTN status check hiccup - report last known state, frontend will poll again
+      // Paystack status check hiccup - report last known state, frontend will poll again
     }
   }
 

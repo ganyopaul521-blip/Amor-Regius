@@ -10,7 +10,7 @@ const cors = require("cors");
 // (like local dev) just logs "already exist" and changes nothing.
 require("./seed");
 
-const mtn = require("./mtnMomo");
+const paystack = require("./paystack");
 const mailer = require("./mailer");
 const { EVENT_NAME, EVENT_SUBTITLE, ORG_NAME, EVENT_DATE_LINE } = require("./ticket");
 const votesRouter = require("./routes/votes");
@@ -50,9 +50,9 @@ app.get("/api/config", (req, res) => {
     eventSubtitle: EVENT_SUBTITLE,
     orgName: ORG_NAME,
     eventDateLine: EVENT_DATE_LINE,
-    momoNumber: process.env.MOMO_NUMBER || "0558756757",
     votePriceGhs: Number(process.env.VOTE_PRICE_GHS || 1),
-    mtnMomoConfigured: mtn.isConfigured(),
+    paystackPublicKey: paystack.publicKey(),
+    paystackConfigured: paystack.isConfigured(),
     emailConfigured: mailer.isConfigured(),
   });
 });

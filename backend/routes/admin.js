@@ -6,7 +6,7 @@ const multer = require("multer");
 const db = require("../db");
 const { generateTicketPng } = require("../ticket");
 const mailer = require("../mailer");
-const mtn = require("../mtnMomo");
+const paystack = require("../paystack");
 
 const router = express.Router();
 
@@ -128,10 +128,10 @@ router.get("/stats", (req, res) => {
     )
     .all();
 
-  const mtnRequests = ticketTotals.totalOrders + votePaymentTotals.totalRequests;
-  const mtnSuccessful = ticketTotals.confirmedOrders + votePaymentTotals.confirmed;
-  const mtnPending = ticketTotals.pendingOrders + votePaymentTotals.pending;
-  const mtnFailed = ticketTotals.rejectedOrders + votePaymentTotals.rejected;
+  const paymentRequests = ticketTotals.totalOrders + votePaymentTotals.totalRequests;
+  const paymentSuccessful = ticketTotals.confirmedOrders + votePaymentTotals.confirmed;
+  const paymentPending = ticketTotals.pendingOrders + votePaymentTotals.pending;
+  const paymentFailed = ticketTotals.rejectedOrders + votePaymentTotals.rejected;
 
   res.json({
     revenue: {
@@ -150,15 +150,15 @@ router.get("/stats", (req, res) => {
       rejected: ticketTotals.rejectedOrders,
     },
     payments: {
-      totalRequests: mtnRequests,
-      successful: mtnSuccessful,
-      pending: mtnPending,
-      failed: mtnFailed,
-      successRate: mtnRequests > 0 ? Math.round((mtnSuccessful / mtnRequests) * 1000) / 10 : null,
+      totalRequests: paymentRequests,
+      successful: paymentSuccessful,
+      pending: paymentPending,
+      failed: paymentFailed,
+      successRate: paymentRequests > 0 ? Math.round((paymentSuccessful / paymentRequests) * 1000) / 10 : null,
     },
     voting: voteAggregate,
     services: {
-      mtnConfigured: mtn.isConfigured(),
+      paystackConfigured: paystack.isConfigured(),
       emailConfigured: mailer.isConfigured(),
     },
   });

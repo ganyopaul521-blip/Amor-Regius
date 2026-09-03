@@ -2,12 +2,9 @@
 
 A ticket-purchase and awards-voting site for the RoyalHouse Chapel Students
 Association (University of Ghana)'s Amor Regius Dinner & Awards Night, held
-Sunday 20th September 2026. Both flows charge the buyer/voter's own **MTN
-Mobile Money** wallet directly through MTN's own MoMo Open API (Collections)
-— no payment aggregator in the middle, funds settle straight into your MTN
-MoMo account. Because it's a direct telco integration, it only works for
-payers on the MTN network (Vodafone/Telecel and AirtelTigo numbers can't be
-charged this way).
+Sunday 20th September 2026. Both flows are paid via **Paystack** (card or
+Ghana Mobile Money — MTN, Vodafone Cash, AirtelTigo, all supported), using
+Paystack's inline popup so the buyer never leaves this site.
 
 Once a ticket order is confirmed, a ticket image (event branding, buyer
 name, ticket type, the date, a unique ticket ID, and a QR code for door
@@ -21,69 +18,41 @@ photos uploaded and managed from the admin page.
 
 ```
 frontend/   Static site (no build step) — home, tickets, vote, admin pages
-backend/    Node/Express API + SQLite database + MTN MoMo + ticket + email
+backend/    Node/Express API + SQLite database + Paystack + ticket + email
 ```
 
-## Setting up real Mobile Money payments (MTN MoMo, direct)
+## Setting up real payments (Paystack, personal account)
 
-### Sandbox (free, self-service, for testing)
-
-1. Sign up at [momodeveloper.mtn.com](https://momodeveloper.mtn.com) and
-   subscribe to the product literally named **"Collections | Enable remote
-   collection of bills, fees or taxes"** to get a subscription key. Don't
-   subscribe to "Collection Widget" instead - that's a different, hosted
-   checkout product and its key will fail with a generic 401 on the
-   endpoints this app calls.
-2. Put it in `backend/.env` as `MTN_SUBSCRIPTION_KEY`.
-3. From `backend/`, run:
-   ```bash
-   npm run mtn-setup
+1. Sign up at [dashboard.paystack.com/#/signup](https://dashboard.paystack.com/#/signup)
+   as an **individual** (not a registered business) — Ghana's personal-account
+   KYC needs a government-issued ID (passport/National ID/driver's licence/
+   voter's card) plus a Tax Identification Number, all matching the same
+   name. Test-mode keys work immediately, before that KYC is submitted or
+   approved.
+2. Dashboard → **Settings → API Keys & Webhooks** — copy the **Secret Key**
+   and **Public Key**.
+3. Put them in `backend/.env`:
    ```
-   This self-provisions a sandbox API user/key and prints the values to
-   paste into `backend/.env` (`MTN_API_USER`, `MTN_API_KEY`).
-4. Leave `MTN_BASE_URL`, `MTN_TARGET_ENVIRONMENT`, and `MTN_CURRENCY` at
-   their sandbox defaults (see `.env.example`) — sandbox only accepts `EUR`
-   as the currency regardless of country; that's normal, not a bug, and has
-   no bearing on the real GHS prices shown to users.
-5. In MTN's sandbox, there's no real phone to approve a prompt on — check
-   MTN's sandbox docs for how to simulate a successful/failed payment for a
-   given test MSISDN.
-
-### Production (real money)
-
-MTN does **not** let you self-provision production credentials the way
-sandbox does. You'll need to:
-
-1. Go through MTN's MoMo Collections onboarding (business KYC, approval via
-   an account manager and the MoMo Partner Portal). This can take some time
-   and isn't instant.
-2. Once approved, you'll receive production `API_User`/`API_Key` from your
-   account manager, and a production subscription key from
-   [momoapi.mtn.com](https://momoapi.mtn.com).
-3. Update `backend/.env`:
+   PAYSTACK_SECRET_KEY=sk_test_...
+   PAYSTACK_PUBLIC_KEY=pk_test_...
    ```
-   MTN_BASE_URL=https://proxy.momoapi.mtn.com
-   MTN_TARGET_ENVIRONMENT=mtnghana
-   MTN_CURRENCY=GHS
-   MTN_SUBSCRIPTION_KEY=<production key>
-   MTN_API_USER=<from MTN>
-   MTN_API_KEY=<from MTN>
-   ```
+   The secret key is never sent to the browser. The public key is safe to
+   expose — it's already returned by `/api/config` for the frontend's popup.
+4. Test mode supports Ghana Mobile Money and card without any real money
+   moving — Paystack's docs list test Mobile Money numbers/OTPs for
+   simulating success/failure. Switch to live keys (`sk_live_...`/
+   `pk_live_...`) once KYC is approved and you're ready to accept real
+   payments — no code change needed, only the `.env` values.
 
 There's no webhook/public-URL requirement — the backend confirms payment by
-polling MTN's own status endpoint whenever the frontend checks an order's
-status, so this works fine even on `localhost`.
+verifying the transaction reference against Paystack's own record whenever
+the frontend checks an order's status, so this works fine even on
+`localhost`. Every confirmation also re-checks the paid amount against what
+the order was created for server-side, so a tampered client-side popup call
+can't sneak through as a real payment.
 
-> **Confirmed against a live sandbox account:** request-to-pay and status
-> polling both work end-to-end as implemented. One real gotcha found along
-> the way: MTN's sandbox has a WAF that silently rejects any
-> `payerMessage`/`payeeNote` containing `(`, `)`, or `#` - it returns HTTP
-> 200 with an HTML "Request Rejected" body instead of a normal API error, so
-> it doesn't fail loudly. `backend/mtnMomo.js`'s `sanitizeNote()` strips
-> these from any text built from user/admin-entered content (e.g. a nominee
-> name); if you add new message text anywhere, avoid those characters. The
-> raw response from MTN's status endpoint is also stored in the
-> `last_status_payload` column for debugging anything else unexpected.
+> Paystack settles to a **bank account**, not a Mobile Money wallet — plan
+> for that when setting up your payout account during KYC.
 
 ## Setting up ticket email delivery (your own Gmail account, no third party)
 
@@ -107,9 +76,8 @@ The ticket image itself is built in `backend/ticket.js` (an SVG template
 rendered to PNG via `sharp`, with a QR code from the `qrcode` package
 encoding the order's unique reference). To change the design, event name,
 date, or org name shown on the ticket, edit the constants at the top of that
-file — `server.js`'s `/api/config` endpoint and the vote/ticket payment
-messages sent to MTN also read from those same constants, so it only needs
-changing in one place.
+file — `server.js`'s `/api/config` endpoint also reads from those same
+constants, so it only needs changing in one place.
 
 ## Running it
 
@@ -117,7 +85,7 @@ changing in one place.
 
 ```bash
 npm install
-copy .env.example .env      # then fill in ADMIN_KEY, MTN keys, Gmail keys, etc.
+copy .env.example .env      # then fill in ADMIN_KEY, Paystack keys, Gmail keys, etc.
 npm run seed                # seeds placeholder award nominees
 npm start                   # runs on http://localhost:4000
 ```
@@ -149,8 +117,8 @@ every order, vote, and uploaded photo.
      a persistent disk at all, so free would silently lose data again.
 2. When prompted for environment variables (all marked `sync: false` in
    `render.yaml` so they're never stored in the repo), paste in the same
-   values as your local `backend/.env`: `ADMIN_KEY`, `MOMO_NUMBER`,
-   `VOTE_PRICE_GHS`, the three `TICKET_*_PRICE_GHS`, the `MTN_*` keys,
+   values as your local `backend/.env`: `ADMIN_KEY`, `VOTE_PRICE_GHS`, the
+   three `TICKET_*_PRICE_GHS`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`,
    `GMAIL_USER`, `GMAIL_APP_PASSWORD`. Leave `FRONTEND_ORIGIN` for step 3.
    **Change `ADMIN_KEY` from the placeholder before going live.**
 3. Once deployed, Render gives you a URL like
@@ -191,8 +159,8 @@ Real nominee names aren't in yet — edit the `CATEGORIES` list in
 ## Admin
 
 Open `frontend/admin.html`, enter the `ADMIN_KEY` from your `.env`, and click
-"Load Data" to see ticket orders and vote payments, including the MTN
-transaction ID and status. Both tables have a manual status override in case
+"Load Data" to see ticket orders and vote payments, including the Paystack
+payment reference and status. Both tables have a manual status override in case
 a payment needs correcting by hand — changing a vote payment to "confirmed"
 there adds its votes to the nominee's tally exactly once, same as a real
 confirmation does.
