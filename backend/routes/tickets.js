@@ -71,8 +71,25 @@ router.post("/", async (req, res) => {
       clientReference
     );
 
-  const orderId = insert.lastInsertRowid;
-  const order = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(orderId);
+  // Built directly from what was just inserted rather than a second
+  // round-trip SELECT - every field the frontend needs is already known here,
+  // and each Turso query is a real network call, unlike the old local file.
+  const order = {
+    id: insert.lastInsertRowid,
+    buyer_name: String(buyerName).trim(),
+    buyer_phone: String(buyerPhone).trim(),
+    buyer_email: String(buyerEmail).trim(),
+    ticket_type: ticketType,
+    quantity: qty,
+    amount_ghs: amountGhs,
+    base_amount_ghs: baseAmountGhs,
+    network: "paystack",
+    client_reference: clientReference,
+    financial_transaction_id: null,
+    last_status_payload: null,
+    ticket_sent_at: null,
+    status: "pending",
+  };
   res.status(201).json({
     ok: true,
     order,
