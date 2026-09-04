@@ -16,6 +16,19 @@ function publicKey() {
   return process.env.PAYSTACK_PUBLIC_KEY || null;
 }
 
+// Paystack's flat rate across card and Mobile Money in Ghana, as confirmed
+// against paystack.com/gh/pricing (Sept 2026) - no cap, no separate flat fee
+// component. Passing this to the buyer means grossing up the charge so that
+// after Paystack deducts its cut, the organizer still nets exactly the
+// listed ticket/vote price - simple addition (price * 1.0195) would
+// undershoot that by a few pesewas because the fee then also applies to the
+// fee itself.
+const FEE_RATE = 0.0195;
+
+function amountWithFeePassedOn(netGhs) {
+  return Math.round((netGhs / (1 - FEE_RATE)) * 100) / 100;
+}
+
 // Looks up a transaction by the reference the popup was opened with. This is
 // the authoritative source of truth for whether money actually moved -
 // amountGhs here is what Paystack actually recorded as paid, for the caller
@@ -56,4 +69,4 @@ function newReferenceId() {
   return crypto.randomUUID();
 }
 
-module.exports = { isConfigured, publicKey, verifyTransaction, newReferenceId };
+module.exports = { isConfigured, publicKey, verifyTransaction, newReferenceId, FEE_RATE, amountWithFeePassedOn };

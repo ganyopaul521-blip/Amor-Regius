@@ -77,7 +77,7 @@ router.get("/stats", (req, res) => {
     .prepare(
       `SELECT
          COUNT(*) AS totalOrders,
-         COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount_ghs END), 0) AS totalRevenue,
+         COALESCE(SUM(CASE WHEN status = 'confirmed' THEN base_amount_ghs END), 0) AS totalRevenue,
          COALESCE(SUM(CASE WHEN status = 'confirmed' THEN quantity END), 0) AS ticketsSold,
          SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmedOrders,
          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingOrders,
@@ -90,7 +90,7 @@ router.get("/stats", (req, res) => {
     .prepare(
       `SELECT ticket_type AS type,
               COALESCE(SUM(CASE WHEN status = 'confirmed' THEN quantity END), 0) AS sold,
-              COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount_ghs END), 0) AS revenue
+              COALESCE(SUM(CASE WHEN status = 'confirmed' THEN base_amount_ghs END), 0) AS revenue
        FROM ticket_orders
        GROUP BY ticket_type`
     )
@@ -119,7 +119,7 @@ router.get("/stats", (req, res) => {
   const revenueSeries = db
     .prepare(
       `SELECT DATE(created_at) AS day,
-              SUM(amount_ghs) AS revenue,
+              SUM(base_amount_ghs) AS revenue,
               SUM(quantity) AS tickets
        FROM ticket_orders
        WHERE status = 'confirmed'

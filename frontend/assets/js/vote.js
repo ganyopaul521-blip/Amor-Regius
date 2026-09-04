@@ -4,21 +4,33 @@ let selectedNomineeName = "";
 let quantity = 1;
 let pollTimer = null;
 let paystackPublicKey = null;
+let paystackFeeRate = 0;
 
 // Needed before the Paystack popup can open - fetched once on page load.
+// paystackFeeRate lets the summary show the same fee-inclusive total the
+// backend will actually charge (the backend independently recomputes and
+// charges this itself - this is only for display, never trusted for payment).
 async function loadPaystackKey() {
   try {
     const cfg = await apiGet("/config");
     paystackPublicKey = cfg.paystackPublicKey;
+    paystackFeeRate = cfg.paystackFeeRate || 0;
+    updateSummary();
   } catch (err) {
     // handled at submit time if still null
   }
 }
 loadPaystackKey();
 
+function amountWithFeePassedOn(netGhs) {
+  return Math.round((netGhs / (1 - paystackFeeRate)) * 100) / 100;
+}
+
 const categoriesEl = document.getElementById("categories");
 const selectedNomineeEl = document.getElementById("selected-nominee");
 const qtyValueEl = document.getElementById("qty-value");
+const summarySubtotalEl = document.getElementById("summary-subtotal");
+const summaryFeeEl = document.getElementById("summary-fee");
 const summaryTotalEl = document.getElementById("summary-total");
 const alertEl = document.getElementById("vote-alert");
 const form = document.getElementById("vote-form");
@@ -27,7 +39,13 @@ const statusBox = document.getElementById("payment-status");
 const statusText = document.getElementById("payment-status-text");
 
 function updateSummary() {
-  summaryTotalEl.textContent = `GHS ${votePrice * quantity}`;
+  const subtotal = votePrice * quantity;
+  const total = amountWithFeePassedOn(subtotal);
+  const fee = Math.round((total - subtotal) * 100) / 100;
+
+  summarySubtotalEl.textContent = `GHS ${subtotal.toFixed(2)}`;
+  summaryFeeEl.textContent = `GHS ${fee.toFixed(2)}`;
+  summaryTotalEl.textContent = `GHS ${total.toFixed(2)}`;
 }
 
 function showAlert(message, type) {

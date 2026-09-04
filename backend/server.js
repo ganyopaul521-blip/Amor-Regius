@@ -53,6 +53,7 @@ app.get("/api/config", (req, res) => {
     votePriceGhs: Number(process.env.VOTE_PRICE_GHS || 1),
     paystackPublicKey: paystack.publicKey(),
     paystackConfigured: paystack.isConfigured(),
+    paystackFeeRate: paystack.FEE_RATE,
     emailConfigured: mailer.isConfigured(),
   });
 });

@@ -112,6 +112,20 @@ if (!hasColumn("vote_payments", "voter_email")) {
   db.exec(`ALTER TABLE vote_payments ADD COLUMN voter_email TEXT`);
 }
 
+// base_amount_ghs is the actual ticket/vote price before Paystack's fee is
+// grossed up into amount_ghs (the real charged amount, used for the
+// anti-tamper check against what Paystack reports paid). Revenue reporting
+// should sum base_amount_ghs - that's what the organizer actually nets,
+// since the fee portion of amount_ghs goes to Paystack, not the organizer.
+// Backfill for rows that predate the fee-pass-through feature: those were
+// charged with no surcharge, so their base amount equals what was charged.
+for (const table of ["ticket_orders", "vote_payments"]) {
+  if (!hasColumn(table, "base_amount_ghs")) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN base_amount_ghs REAL`);
+    db.exec(`UPDATE ${table} SET base_amount_ghs = amount_ghs WHERE base_amount_ghs IS NULL`);
+  }
+}
+
 if (!hasColumn("vote_payments", "status")) {
   // The column default must be 'pending' so it applies correctly to every
   // vote inserted from now on. Rows that already existed before this

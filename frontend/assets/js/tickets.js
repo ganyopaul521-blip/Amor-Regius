@@ -3,21 +3,33 @@ let selectedPrice = 0;
 let quantity = 1;
 let pollTimer = null;
 let paystackPublicKey = null;
+let paystackFeeRate = 0;
 
 // Needed before the Paystack popup can open - fetched once on page load.
+// paystackFeeRate lets the summary show the same fee-inclusive total the
+// backend will actually charge (the backend independently recomputes and
+// charges this itself - this is only for display, never trusted for payment).
 async function loadPaystackKey() {
   try {
     const cfg = await apiGet("/config");
     paystackPublicKey = cfg.paystackPublicKey;
+    paystackFeeRate = cfg.paystackFeeRate || 0;
+    updateSummary();
   } catch (err) {
     // handled at submit time if still null
   }
 }
 loadPaystackKey();
 
+function amountWithFeePassedOn(netGhs) {
+  return Math.round((netGhs / (1 - paystackFeeRate)) * 100) / 100;
+}
+
 const optionEls = document.querySelectorAll(".ticket-option");
 const qtyValueEl = document.getElementById("qty-value");
 const summaryTypeEl = document.getElementById("summary-type");
+const summarySubtotalEl = document.getElementById("summary-subtotal");
+const summaryFeeEl = document.getElementById("summary-fee");
 const summaryTotalEl = document.getElementById("summary-total");
 const alertEl = document.getElementById("ticket-alert");
 const form = document.getElementById("ticket-form");
@@ -61,10 +73,16 @@ function setStep(n) {
 }
 
 function updateSummary() {
+  const subtotal = selectedPrice * quantity;
+  const total = amountWithFeePassedOn(subtotal);
+  const fee = Math.round((total - subtotal) * 100) / 100;
+
   summaryTypeEl.textContent = selectedType
     ? `${selectedType[0].toUpperCase()}${selectedType.slice(1)} x${quantity}`
     : "-";
-  summaryTotalEl.textContent = `GHS ${selectedPrice * quantity}`;
+  summarySubtotalEl.textContent = `GHS ${subtotal.toFixed(2)}`;
+  summaryFeeEl.textContent = `GHS ${fee.toFixed(2)}`;
+  summaryTotalEl.textContent = `GHS ${total.toFixed(2)}`;
 }
 
 optionEls.forEach((el) => {

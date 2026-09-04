@@ -57,18 +57,22 @@ router.post("/", async (req, res) => {
     return res.status(404).json({ error: "Nominee not found" });
   }
 
-  const amountGhs = qty * VOTE_PRICE_GHS;
+  const baseAmountGhs = qty * VOTE_PRICE_GHS;
+  // Same fee pass-through as tickets.js - the voter is charged this
+  // grossed-up amount so the organizer nets exactly baseAmountGhs.
+  const amountGhs = paystack.amountWithFeePassedOn(baseAmountGhs);
   const clientReference = paystack.newReferenceId();
 
   const insert = db
     .prepare(
-      `INSERT INTO vote_payments (nominee_id, quantity, amount_ghs, voter_name, voter_phone, voter_email, network, client_reference, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
+      `INSERT INTO vote_payments (nominee_id, quantity, amount_ghs, base_amount_ghs, voter_name, voter_phone, voter_email, network, client_reference, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
     )
     .run(
       nomineeId,
       qty,
       amountGhs,
+      baseAmountGhs,
       voterName || null,
       voterPhone ? String(voterPhone).trim() : null,
       String(voterEmail).trim(),
@@ -82,6 +86,7 @@ router.post("/", async (req, res) => {
     paymentId,
     clientReference,
     amountGhs,
+    baseAmountGhs,
     message: "Complete your payment in the Paystack window to submit your vote.",
   });
 });
@@ -123,7 +128,13 @@ router.get("/:id/status", async (req, res) => {
   }
 
   const nominee = db.prepare("SELECT id, name, votes FROM nominees WHERE id = ?").get(current.nominee_id);
-  res.json({ status: current.status, quantity: current.quantity, amountGhs: current.amount_ghs, nominee });
+  res.json({
+    status: current.status,
+    quantity: current.quantity,
+    amountGhs: current.amount_ghs,
+    baseAmountGhs: current.base_amount_ghs,
+    nominee,
+  });
 });
 
 module.exports = router;

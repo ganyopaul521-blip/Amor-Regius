@@ -48,13 +48,17 @@ router.post("/", async (req, res) => {
     return res.status(502).json({ error: "Payments are not configured yet. Set PAYSTACK_SECRET_KEY in backend/.env." });
   }
 
-  const amountGhs = qty * PRICES[ticketType];
+  const baseAmountGhs = qty * PRICES[ticketType];
+  // The Paystack fee is passed on to the buyer - they're charged this
+  // grossed-up amount so the organizer nets exactly baseAmountGhs after
+  // Paystack takes its cut. See paystack.js's amountWithFeePassedOn().
+  const amountGhs = paystack.amountWithFeePassedOn(baseAmountGhs);
   const clientReference = paystack.newReferenceId();
 
   const insert = db
     .prepare(
-      `INSERT INTO ticket_orders (buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, network, client_reference, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
+      `INSERT INTO ticket_orders (buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, base_amount_ghs, network, client_reference, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
     )
     .run(
       String(buyerName).trim(),
@@ -63,6 +67,7 @@ router.post("/", async (req, res) => {
       ticketType,
       qty,
       amountGhs,
+      baseAmountGhs,
       clientReference
     );
 
@@ -138,6 +143,7 @@ router.get("/:id/status", async (req, res) => {
     ticketType: current.ticket_type,
     quantity: current.quantity,
     amountGhs: current.amount_ghs,
+    baseAmountGhs: current.base_amount_ghs,
     ticketEmailed: Boolean(current.ticket_sent_at),
     transactionId: current.financial_transaction_id,
   });
