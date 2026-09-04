@@ -140,7 +140,7 @@ async function loadSlides() {
 
   try {
     const data = await apiGet("/gallery");
-    data.photos.slice(0, 6).forEach((p) => {
+    data.photos.forEach((p) => {
       sources.push({ src: p.url, alt: p.caption || "Amor Regius event photo" });
     });
   } catch (err) {

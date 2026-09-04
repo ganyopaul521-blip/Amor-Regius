@@ -780,9 +780,12 @@ main {
 .hero-dots {
   position: absolute;
   bottom: 18px;
+  left: 24px;
   right: 24px;
   z-index: 3;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
