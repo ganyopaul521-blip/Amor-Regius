@@ -1,6 +1,7 @@
 // Seeds award categories with placeholder nominees.
 // Edit the CATEGORIES list below with real nominee names, then run:
 //   npm run seed
+require("dotenv").config();
 const db = require("./db");
 
 const CATEGORIES = [
@@ -18,32 +19,20 @@ const CATEGORIES = [
   },
 ];
 
-const insertCategory = db.prepare(
-  "INSERT OR IGNORE INTO categories (name) VALUES (?)"
-);
-const getCategory = db.prepare("SELECT id FROM categories WHERE name = ?");
-const insertNominee = db.prepare(
-  "INSERT INTO nominees (category_id, name) VALUES (?, ?)"
-);
-const countNominees = db.prepare(
-  "SELECT COUNT(*) AS n FROM nominees WHERE category_id = ?"
-);
-
-const seed = db.transaction(() => {
+async function seed() {
   for (const cat of CATEGORIES) {
-    insertCategory.run(cat.name);
-    const { id: categoryId } = getCategory.get(cat.name);
-    const { n } = countNominees.get(categoryId);
+    await db.prepare("INSERT OR IGNORE INTO categories (name) VALUES (?)").run(cat.name);
+    const { id: categoryId } = await db.prepare("SELECT id FROM categories WHERE name = ?").get(cat.name);
+    const { n } = await db.prepare("SELECT COUNT(*) AS n FROM nominees WHERE category_id = ?").get(categoryId);
     if (n === 0) {
       for (const nomineeName of cat.nominees) {
-        insertNominee.run(categoryId, nomineeName);
+        await db.prepare("INSERT INTO nominees (category_id, name) VALUES (?, ?)").run(categoryId, nomineeName);
       }
       console.log(`Seeded ${cat.nominees.length} nominees for "${cat.name}"`);
     } else {
       console.log(`Skipped "${cat.name}" - nominees already exist`);
     }
   }
-});
+}
 
-seed();
-console.log("Done.");
+module.exports = seed().then(() => console.log("Done."));

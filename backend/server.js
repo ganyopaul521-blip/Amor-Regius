@@ -1,5 +1,4 @@
 require("dotenv").config();
-const path = require("path");
 const express = require("express");
 const cors = require("cors");
 
@@ -37,10 +36,8 @@ app.use(
 );
 app.use(express.json());
 
-const UPLOADS_ROOT = process.env.DATA_DIR
-  ? path.join(process.env.DATA_DIR, "uploads")
-  : path.join(__dirname, "uploads");
-app.use("/uploads", express.static(UPLOADS_ROOT));
+// Gallery photos are hosted on Cloudinary now, not served locally - no
+// static file route or persistent disk needed.
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 

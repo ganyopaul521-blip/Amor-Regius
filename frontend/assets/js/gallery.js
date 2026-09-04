@@ -1,5 +1,3 @@
-const BACKEND_ORIGIN = API_BASE.replace(/\/api$/, "");
-
 const gridEl = document.getElementById("gallery-grid");
 const emptyEl = document.getElementById("gallery-empty");
 const lightbox = document.getElementById("lightbox");
@@ -15,7 +13,7 @@ function openLightbox(index) {
   lastFocusedEl = document.activeElement;
   currentIndex = index;
   const photo = photos[currentIndex];
-  lightboxImage.src = BACKEND_ORIGIN + photo.url;
+  lightboxImage.src = photo.url;
   lightboxImage.alt = photo.caption || "Amor Regius event photo";
   lightboxCaption.textContent = photo.caption || "";
   lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
@@ -76,7 +74,7 @@ async function loadGallery() {
         <div class="gallery-item" data-index="${index}" role="button" tabindex="0"
              aria-label="${photo.caption ? photo.caption.replace(/"/g, "&quot;") : `Photo ${index + 1}`}, view full size"
              style="animation-delay:${Math.min(index * 0.06, 0.6)}s">
-          <img src="${BACKEND_ORIGIN}${photo.url}" alt="${photo.caption ? photo.caption.replace(/"/g, "&quot;") : "Event photo"}" loading="lazy" />
+          <img src="${photo.url}" alt="${photo.caption ? photo.caption.replace(/"/g, "&quot;") : "Event photo"}" loading="lazy" />
           ${photo.caption ? `<div class="gallery-caption">${photo.caption}</div>` : ""}
         </div>`
       )

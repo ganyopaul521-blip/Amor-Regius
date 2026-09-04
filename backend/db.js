@@ -1,176 +1,133 @@
-const fs = require("fs");
-const path = require("path");
-const Database = require("better-sqlite3");
+// Turso (libSQL - a SQLite-compatible hosted database) replaces the local
+// better-sqlite3 file. This keeps the same SQL dialect and the same
+// db.prepare(sql).get/all/run(...) call shape used throughout the route
+// files, so callers only needed `await` added at each call site - no SQL
+// string changes. See db.transaction() below for the one shape that did
+// need a small change at its 2 call sites.
+const { createClient } = require("@libsql/client");
 
-// DATA_DIR lets a persistent disk be mounted anywhere in production (e.g. a
-// Render disk at /var/data) without changing local dev, which just uses
-// backend/data as before.
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
-fs.mkdirSync(DATA_DIR, { recursive: true });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-const db = new Database(path.join(DATA_DIR, "rosa.db"));
-db.pragma("journal_mode = WAL");
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
-  );
-
-  CREATE TABLE IF NOT EXISTS nominees (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category_id INTEGER NOT NULL REFERENCES categories(id),
-    name TEXT NOT NULL,
-    votes INTEGER NOT NULL DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS admin_activity (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT NOT NULL,
-    detail TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS gallery_photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    filename TEXT NOT NULL,
-    caption TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS vote_payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nominee_id INTEGER NOT NULL REFERENCES nominees(id),
-    quantity INTEGER NOT NULL,
-    amount_ghs REAL NOT NULL,
-    voter_name TEXT,
-    voter_phone TEXT,
-    network TEXT,
-    client_reference TEXT NOT NULL,
-    financial_transaction_id TEXT,
-    last_status_payload TEXT,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS ticket_orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    buyer_name TEXT NOT NULL,
-    buyer_phone TEXT NOT NULL,
-    buyer_email TEXT,
-    ticket_type TEXT NOT NULL CHECK (ticket_type IN ('single','double','executive')),
-    quantity INTEGER NOT NULL,
-    amount_ghs REAL NOT NULL,
-    network TEXT,
-    client_reference TEXT NOT NULL,
-    financial_transaction_id TEXT,
-    last_status_payload TEXT,
-    ticket_sent_at TEXT,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-// --- Migrations for databases created before earlier payment integrations ---
-// SQLite can't add/rename columns with certain constraints in one step, so
-// this brings an older ticket_orders/vote_payments table up to the current
-// shape without losing any existing rows.
-
-function hasColumn(table, column) {
-  return db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+// Ungated - only for the schema setup below. Everything else goes through
+// prepare()/transaction(), which await `ready` first so callers never race
+// table creation.
+async function rawExec(sqlScript) {
+  return client.executeMultiple(sqlScript);
 }
 
-for (const table of ["ticket_orders", "vote_payments"]) {
-  if (hasColumn(table, "momo_reference") && !hasColumn(table, "client_reference")) {
-    db.exec(`ALTER TABLE ${table} RENAME COLUMN momo_reference TO client_reference`);
-  }
-  if (!hasColumn(table, "network")) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN network TEXT`);
-  }
-  if (hasColumn(table, "hubtel_transaction_id") && !hasColumn(table, "financial_transaction_id")) {
-    db.exec(`ALTER TABLE ${table} RENAME COLUMN hubtel_transaction_id TO financial_transaction_id`);
-  }
-  if (!hasColumn(table, "financial_transaction_id")) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN financial_transaction_id TEXT`);
-  }
-  if (hasColumn(table, "webhook_payload") && !hasColumn(table, "last_status_payload")) {
-    db.exec(`ALTER TABLE ${table} RENAME COLUMN webhook_payload TO last_status_payload`);
-  }
-  if (!hasColumn(table, "last_status_payload")) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN last_status_payload TEXT`);
-  }
+const ready = (async () => {
+  await rawExec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS nominees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL REFERENCES categories(id),
+      name TEXT NOT NULL,
+      votes INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      detail TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS gallery_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      cloudinary_public_id TEXT NOT NULL,
+      caption TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS vote_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nominee_id INTEGER NOT NULL REFERENCES nominees(id),
+      quantity INTEGER NOT NULL,
+      amount_ghs REAL NOT NULL,
+      base_amount_ghs REAL,
+      voter_name TEXT,
+      voter_phone TEXT,
+      voter_email TEXT,
+      network TEXT,
+      client_reference TEXT NOT NULL,
+      financial_transaction_id TEXT,
+      last_status_payload TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ticket_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      buyer_name TEXT NOT NULL,
+      buyer_phone TEXT NOT NULL,
+      buyer_email TEXT,
+      ticket_type TEXT NOT NULL CHECK (ticket_type IN ('single','double','executive')),
+      quantity INTEGER NOT NULL,
+      amount_ghs REAL NOT NULL,
+      base_amount_ghs REAL,
+      network TEXT,
+      client_reference TEXT NOT NULL,
+      financial_transaction_id TEXT,
+      last_status_payload TEXT,
+      ticket_sent_at TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+})();
+
+function buildPrepare(executeFn) {
+  return function prepare(sql) {
+    return {
+      get: async (...args) => {
+        const r = await executeFn(sql, args);
+        return r.rows[0];
+      },
+      all: async (...args) => {
+        const r = await executeFn(sql, args);
+        return r.rows;
+      },
+      run: async (...args) => {
+        const r = await executeFn(sql, args);
+        return { lastInsertRowid: Number(r.lastInsertRowid ?? 0), changes: r.rowsAffected };
+      },
+    };
+  };
 }
 
-if (!hasColumn("ticket_orders", "ticket_sent_at")) {
-  db.exec(`ALTER TABLE ticket_orders ADD COLUMN ticket_sent_at TEXT`);
+const prepare = buildPrepare(async (sql, args) => {
+  await ready;
+  return client.execute({ sql, args });
+});
+
+// Matches better-sqlite3's db.transaction(fn) shape at call sites, with one
+// small addition: the callback receives a transaction-scoped `db` (shadow
+// the outer name, e.g. `db.transaction((db) => { db.prepare(...).run(...) })`)
+// so queries inside actually run on the transaction, not a separate
+// connection - and the returned function is now async, so call sites need
+// `await apply()` instead of `apply()`.
+function transaction(fn) {
+  return async (...callArgs) => {
+    await ready;
+    const tx = await client.transaction("write");
+    const scopedDb = { prepare: buildPrepare((sql, args) => tx.execute({ sql, args })) };
+    try {
+      const result = await fn(scopedDb, ...callArgs);
+      await tx.commit();
+      return result;
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  };
 }
 
-// Paystack needs an email to charge a vote (unlike the old MTN push-to-phone
-// flow, which only needed a number) - voter_phone stays for reference but is
-// no longer required.
-if (!hasColumn("vote_payments", "voter_email")) {
-  db.exec(`ALTER TABLE vote_payments ADD COLUMN voter_email TEXT`);
-}
-
-// base_amount_ghs is the actual ticket/vote price before Paystack's fee is
-// grossed up into amount_ghs (the real charged amount, used for the
-// anti-tamper check against what Paystack reports paid). Revenue reporting
-// should sum base_amount_ghs - that's what the organizer actually nets,
-// since the fee portion of amount_ghs goes to Paystack, not the organizer.
-// Backfill for rows that predate the fee-pass-through feature: those were
-// charged with no surcharge, so their base amount equals what was charged.
-for (const table of ["ticket_orders", "vote_payments"]) {
-  if (!hasColumn(table, "base_amount_ghs")) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN base_amount_ghs REAL`);
-    db.exec(`UPDATE ${table} SET base_amount_ghs = amount_ghs WHERE base_amount_ghs IS NULL`);
-  }
-}
-
-if (!hasColumn("vote_payments", "status")) {
-  // The column default must be 'pending' so it applies correctly to every
-  // vote inserted from now on. Rows that already existed before this
-  // migration were counted immediately under the old honor-system flow
-  // (pre-payment-gateway), so a one-time backfill (not the column default)
-  // marks exactly those as 'confirmed' - otherwise the pending->confirmed
-  // guard would never fire for new votes, and their tally would never be
-  // added.
-  db.exec(
-    `ALTER TABLE vote_payments ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected'))`
-  );
-  db.exec(`UPDATE vote_payments SET status = 'confirmed'`);
-}
-
-// Older ticket_orders CHECK constraint predates the 'executive' ticket type -
-// SQLite can't ALTER a CHECK constraint in place, so rebuild the table.
-const existingSchema = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'ticket_orders'").get();
-if (existingSchema && !existingSchema.sql.includes("'executive'")) {
-  db.transaction(() => {
-    db.exec(`
-      ALTER TABLE ticket_orders RENAME TO ticket_orders_old;
-
-      CREATE TABLE ticket_orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        buyer_name TEXT NOT NULL,
-        buyer_phone TEXT NOT NULL,
-        buyer_email TEXT,
-        ticket_type TEXT NOT NULL CHECK (ticket_type IN ('single','double','executive')),
-        quantity INTEGER NOT NULL,
-        amount_ghs REAL NOT NULL,
-        network TEXT,
-        client_reference TEXT NOT NULL,
-        financial_transaction_id TEXT,
-        last_status_payload TEXT,
-        ticket_sent_at TEXT,
-        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected')),
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-
-      INSERT INTO ticket_orders (id, buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, network, client_reference, financial_transaction_id, last_status_payload, ticket_sent_at, status, created_at)
-      SELECT id, buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, network, client_reference, financial_transaction_id, last_status_payload, ticket_sent_at, status, created_at FROM ticket_orders_old;
-
-      DROP TABLE ticket_orders_old;
-    `);
-  })();
-}
-
-module.exports = db;
+module.exports = { prepare, transaction, ready };

@@ -5,7 +5,6 @@
 const HERO_EVENT_DATE = new Date("2026-09-20T18:00:00Z"); // Sun 20 Sep 2026, 6pm - Ghana is UTC+0 year-round
 const SLIDE_INTERVAL_MS = 3000;
 
-const BACKEND_ORIGIN = API_BASE.replace(/\/api$/, "");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const slidesEl = document.getElementById("hero-slides");
@@ -142,7 +141,7 @@ async function loadSlides() {
   try {
     const data = await apiGet("/gallery");
     data.photos.slice(0, 6).forEach((p) => {
-      sources.push({ src: `${BACKEND_ORIGIN}${p.url}`, alt: p.caption || "Amor Regius event photo" });
+      sources.push({ src: p.url, alt: p.caption || "Amor Regius event photo" });
     });
   } catch (err) {
     // backend unreachable - fall through to the no-photos gradient slide below

@@ -55,7 +55,7 @@ router.post("/", async (req, res) => {
   const amountGhs = paystack.amountWithFeePassedOn(baseAmountGhs);
   const clientReference = paystack.newReferenceId();
 
-  const insert = db
+  const insert = await db
     .prepare(
       `INSERT INTO ticket_orders (buyer_name, buyer_phone, buyer_email, ticket_type, quantity, amount_ghs, base_amount_ghs, network, client_reference, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'paystack', ?, 'pending')`
@@ -72,7 +72,7 @@ router.post("/", async (req, res) => {
     );
 
   const orderId = insert.lastInsertRowid;
-  const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(orderId);
+  const order = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(orderId);
   res.status(201).json({
     ok: true,
     order,
@@ -94,7 +94,7 @@ async function maybeSendTicket(order) {
   try {
     const png = await generateTicketPng(order);
     await mailer.sendTicketEmail(order, png);
-    db.prepare("UPDATE ticket_orders SET ticket_sent_at = datetime('now') WHERE id = ?").run(order.id);
+    await db.prepare("UPDATE ticket_orders SET ticket_sent_at = datetime('now') WHERE id = ?").run(order.id);
     return { attempted: true, sent: true };
   } catch (err) {
     console.error(`Failed to email ticket for order ${order.id}:`, err.message);
@@ -108,7 +108,7 @@ async function maybeSendTicket(order) {
 // accordingly - there's no webhook, so this poll is what actually confirms
 // payment. The first poll to see 'confirmed' triggers the ticket email.
 router.get("/:id/status", async (req, res) => {
-  const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(req.params.id);
+  const order = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(req.params.id);
   if (!order || order.client_reference !== req.query.ref) {
     return res.status(404).json({ error: "Order not found" });
   }
@@ -124,10 +124,10 @@ router.get("/:id/status", async (req, res) => {
       const amountMatches = result.amountGhs == null || Math.abs(result.amountGhs - order.amount_ghs) < 0.01;
       const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
 
-      db.prepare(
+      await db.prepare(
         "UPDATE ticket_orders SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ?"
       ).run(finalStatus, result.transactionId, JSON.stringify(result), order.id);
-      current = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
+      current = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
     } catch (err) {
       // Paystack status check hiccup - report last known state, frontend will poll again
     }
@@ -135,7 +135,7 @@ router.get("/:id/status", async (req, res) => {
 
   const emailResult = await maybeSendTicket(current);
   if (emailResult.attempted) {
-    current = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
+    current = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
   }
 
   res.json({
@@ -153,7 +153,7 @@ router.get("/:id/status", async (req, res) => {
 // download their ticket directly, regardless of whether the email send
 // succeeded (e.g. email isn't configured, or landed in spam).
 router.get("/:id/ticket.png", async (req, res) => {
-  const order = db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(req.params.id);
+  const order = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(req.params.id);
   if (!order || order.client_reference !== req.query.ref) {
     return res.status(404).json({ error: "Order not found" });
   }

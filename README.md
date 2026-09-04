@@ -18,8 +18,34 @@ photos uploaded and managed from the admin page.
 
 ```
 frontend/   Static site (no build step) — home, tickets, vote, admin pages
-backend/    Node/Express API + SQLite database + Paystack + ticket + email
+backend/    Node/Express API + Turso database + Cloudinary + Paystack + ticket + email
 ```
+
+## Setting up data storage (Turso + Cloudinary, both free)
+
+The database and gallery photos live on two free hosted services instead of
+local disk — this means the backend can run on a platform with no persistent
+storage of its own (like Render's free tier) without losing anything on
+restart.
+
+1. **Turso** (a SQLite-compatible hosted database — same SQL as before, just
+   networked): sign up at [turso.tech](https://turso.tech), create a
+   database, and grab its **Database URL** and an **Auth Token** (Read &
+   Write, no expiry) from the dashboard.
+2. **Cloudinary** (image hosting for gallery photos): sign up at
+   [cloudinary.com](https://cloudinary.com) — the dashboard shows your
+   **Cloud Name**, **API Key**, and **API Secret** immediately.
+3. Put all five in `backend/.env`:
+   ```
+   TURSO_DATABASE_URL=libsql://...
+   TURSO_AUTH_TOKEN=...
+   CLOUDINARY_CLOUD_NAME=...
+   CLOUDINARY_API_KEY=...
+   CLOUDINARY_API_SECRET=...
+   ```
+
+`backend/db.js` creates its tables automatically on first connection — no
+separate setup step needed once these are in `.env`.
 
 ## Setting up real payments (Paystack, personal account)
 
@@ -72,6 +98,13 @@ sees a "Download Ticket" button on the confirmation screen instead of
 getting an email (and the admin panel shows "Not sent" with a manual
 **Resend** button, which also works once email is configured).
 
+> **Hosting note:** Gmail SMTP needs outbound ports 465/587 open. Render's
+> **free** web service tier blocks those specifically to prevent spam abuse
+> (confirmed via a real "Connection timeout" on this project) — a **Starter**
+> instance or above doesn't have that restriction. This is the one remaining
+> reason this backend needs a paid Render instance; the database and gallery
+> photos no longer do, now that they live on Turso/Cloudinary.
+
 The ticket image itself is built in `backend/ticket.js` (an SVG template
 rendered to PNG via `sharp`, with a QR code from the `qrcode` package
 encoding the order's unique reference). To change the design, event name,
@@ -98,35 +131,32 @@ if you deploy the backend elsewhere.
 
 ## Deployment: backend on Render, frontend on Vercel
 
-The backend uses a local SQLite file and local disk for gallery uploads, both
-of which need real persistent storage — Render supports that (a mounted
-disk), Vercel's serverless functions don't (their filesystem is wiped between
-invocations). So the backend goes on **Render**, and the static frontend
-goes on **Vercel**. Deploying it the other way round would silently lose
-every order, vote, and uploaded photo.
+The backend's actual data (database + gallery photos) lives on Turso and
+Cloudinary now, not local disk — so unlike an earlier version of this setup,
+Render's own persistent-disk feature isn't needed at all. The backend still
+needs a **paid** Render instance type, but only because Gmail SMTP needs
+ports Render's free tier blocks (see the email section above) — nothing to
+do with data persistence anymore.
 
 ### 1. Backend → Render
 
 1. Push this repo to GitHub (already done), then in the
    [Render dashboard](https://dashboard.render.com), click **New → Blueprint**
    and point it at the repo — it will read `render.yaml` at the repo root
-   and set up a web service (rooted at `backend/`) with a 1GB persistent disk
-   mounted at `/var/data`.
-   - The disk requires a paid instance type — `render.yaml` is set to the
-     **Starter** plan (currently ~$7/month). Render's free tier can't attach
-     a persistent disk at all, so free would silently lose data again.
+   and set up a web service (rooted at `backend/`) on the **Starter** plan
+   (currently ~$7/month, needed for SMTP as noted above).
 2. When prompted for environment variables (all marked `sync: false` in
    `render.yaml` so they're never stored in the repo), paste in the same
    values as your local `backend/.env`: `ADMIN_KEY`, `VOTE_PRICE_GHS`, the
    three `TICKET_*_PRICE_GHS`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`,
-   `GMAIL_USER`, `GMAIL_APP_PASSWORD`. Leave `FRONTEND_ORIGIN` for step 3.
+   `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `TURSO_DATABASE_URL`,
+   `TURSO_AUTH_TOKEN`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`,
+   `CLOUDINARY_API_SECRET`. Leave `FRONTEND_ORIGIN` for step 3.
    **Change `ADMIN_KEY` from the placeholder before going live.**
 3. Once deployed, Render gives you a URL like
-   `https://amor-regius-backend.onrender.com`. Note it for step 4.
-4. First deploy only: `data/` and `uploads/gallery/` on the new disk start
-   empty — re-run `npm run seed` from a Render shell (Dashboard → Shell) to
-   seed nominee categories, or restore them from your existing
-   `backend/data/rosa.db` if you want to bring real votes/orders across.
+   `https://amor-regius-backend.onrender.com`. Note it for step 4. Since the
+   database is shared (Turso), nominee categories and any real data already
+   seeded/migrated show up immediately — no first-deploy empty-state step.
 
 ### 2. Frontend → Vercel
 
@@ -169,5 +199,5 @@ The same page's **Photo Gallery** section (doesn't need "Load Data" first,
 just the admin key) lets you upload JPEG/PNG/WebP photos (up to 8MB) with an
 optional caption — they appear on the public `gallery.html` page
 immediately, and can be deleted from either page's controls. Uploaded files
-are stored in `backend/uploads/gallery/` (not committed to git) and served
-at `/uploads/gallery/<filename>`.
+go straight to Cloudinary (no local disk involved), and the database stores
+the resulting URL plus the Cloudinary `public_id` needed to delete it later.
