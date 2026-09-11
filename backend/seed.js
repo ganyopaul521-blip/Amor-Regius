@@ -5,7 +5,7 @@ const db = require("./db");
 const CATEGORIES = [
   {
     name: "Most Committed Member",
-    nominees: ["Samuel", "Leonard", "Angela", "Paul"],
+    nominees: ["Samuel Sowu", "Leonard Gbekie", "Angela Brew", "Paul Ganyo"],
   },
   {
     name: "Department of the Year",
@@ -13,7 +13,7 @@ const CATEGORIES = [
   },
   {
     name: "Executive of the Year",
-    nominees: ["Paul", "Leonard", "Angela"],
+    nominees: ["Paul Ganyo", "Leonard Gbekie", "Angela Brew"],
   },
 ];
 
