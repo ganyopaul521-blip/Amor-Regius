@@ -13,7 +13,7 @@ const CATEGORIES = [
   },
   {
     name: "Executive of the Year",
-    nominees: ["Paul Ganyo", "Leonard Gbekie", "Angela Brew"],
+    nominees: ["Paul Ganyo", "Leonard Gbekie", "Angela Brew", "Frederick Reimmer"],
   },
 ];
 
