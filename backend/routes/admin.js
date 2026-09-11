@@ -255,10 +255,21 @@ router.patch("/votes/:id", async (req, res) => {
   }
 
   const apply = db.transaction(async (db) => {
-    if (payment.status === "pending" && status === "confirmed") {
+    // Same atomic claim as routes/votes.js's status poll - re-checks
+    // status = 'pending' fresh at write time instead of trusting the
+    // `payment` snapshot fetched above, so this can't double-credit votes
+    // if it ever races another confirmation of the same payment.
+    const update = await db
+      .prepare("UPDATE vote_payments SET status = ? WHERE id = ? AND status = 'pending'")
+      .run(status, payment.id);
+
+    if (update.changes > 0 && status === "confirmed") {
       await db.prepare("UPDATE nominees SET votes = votes + ? WHERE id = ?").run(payment.quantity, payment.nominee_id);
+    } else if (update.changes === 0) {
+      // Payment wasn't 'pending' (e.g. already confirmed/rejected) - still
+      // apply the requested status, just without touching the vote tally.
+      await db.prepare("UPDATE vote_payments SET status = ? WHERE id = ?").run(status, payment.id);
     }
-    await db.prepare("UPDATE vote_payments SET status = ? WHERE id = ?").run(status, payment.id);
   });
   await apply();
 

@@ -110,12 +110,23 @@ router.get("/:id/status", async (req, res) => {
       const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
 
       const apply = db.transaction(async (db) => {
-        if (payment.status === "pending" && finalStatus === "confirmed") {
+        // Atomically claim the pending -> finalStatus transition: the
+        // WHERE status = 'pending' is re-checked fresh against the database
+        // at write time, not the `payment` snapshot read at the top of this
+        // request. Only the one request whose UPDATE actually matches a row
+        // (changes > 0) may credit votes - this closes a real race where
+        // concurrent polls (e.g. the frontend's 3s interval overlapping a
+        // slow Paystack verify call) could each see the same stale
+        // "pending" snapshot and every one of them add the vote(s).
+        const update = await db
+          .prepare(
+            "UPDATE vote_payments SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ? AND status = 'pending'"
+          )
+          .run(finalStatus, result.transactionId, JSON.stringify(result), payment.id);
+
+        if (update.changes > 0 && finalStatus === "confirmed") {
           await db.prepare("UPDATE nominees SET votes = votes + ? WHERE id = ?").run(payment.quantity, payment.nominee_id);
         }
-        await db.prepare(
-          "UPDATE vote_payments SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ?"
-        ).run(finalStatus, result.transactionId, JSON.stringify(result), payment.id);
       });
       await apply();
 

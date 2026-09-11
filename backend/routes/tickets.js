@@ -108,13 +108,27 @@ async function maybeSendTicket(order) {
     return { attempted: false, sent: false, reason: "email_not_configured" };
   }
 
+  // Claim the row atomically before doing any slow work (image render +
+  // email send) - the WHERE ticket_sent_at IS NULL is re-checked fresh at
+  // write time, so if two status polls race each other only one can claim
+  // it, closing a real duplicate-email risk (the same class of bug fixed
+  // in routes/votes.js's vote-count race).
+  const claim = await db
+    .prepare("UPDATE ticket_orders SET ticket_sent_at = datetime('now') WHERE id = ? AND ticket_sent_at IS NULL")
+    .run(order.id);
+  if (claim.changes === 0) {
+    return { attempted: false, sent: false };
+  }
+
   try {
     const png = await generateTicketPng(order);
     await mailer.sendTicketEmail(order, png);
-    await db.prepare("UPDATE ticket_orders SET ticket_sent_at = datetime('now') WHERE id = ?").run(order.id);
     return { attempted: true, sent: true };
   } catch (err) {
     console.error(`Failed to email ticket for order ${order.id}:`, err.message);
+    // The send didn't actually happen - release the claim so a later poll
+    // or the admin's manual Resend button can retry.
+    await db.prepare("UPDATE ticket_orders SET ticket_sent_at = NULL WHERE id = ?").run(order.id);
     return { attempted: true, sent: false, reason: err.message };
   }
 }
