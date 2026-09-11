@@ -58,9 +58,10 @@ function stopPolling() {
 }
 
 function renderCategories(categories) {
+  // Vote counts/standings are deliberately not shown here - only admins can
+  // see totals, via the admin dashboard's Voting section.
   categoriesEl.innerHTML = "";
   categories.forEach((cat) => {
-    const maxVotes = Math.max(1, ...cat.nominees.map((n) => n.votes));
     const block = document.createElement("div");
     block.className = "category-block";
 
@@ -75,12 +76,7 @@ function renderCategories(categories) {
       row.dataset.name = nominee.name;
       if (nominee.id === selectedNomineeId) row.classList.add("selected");
 
-      const pct = Math.round((nominee.votes / maxVotes) * 100);
-      row.innerHTML = `
-        <span class="name">${nominee.name}</span>
-        <span class="bar-wrap"><span class="bar" style="width:${pct}%"></span></span>
-        <span class="votes">${nominee.votes} vote${nominee.votes === 1 ? "" : "s"}</span>
-      `;
+      row.innerHTML = `<span class="name">${nominee.name}</span>`;
 
       row.addEventListener("click", () => {
         selectedNomineeId = nominee.id;
@@ -151,7 +147,7 @@ function pollPaymentStatus(paymentId, clientReference) {
         stopPolling();
         statusBox.classList.add("hidden");
         showAlert(
-          `Payment confirmed! ${data.quantity} vote(s) for "${data.nominee.name}" recorded. ${data.nominee.name} now has ${data.nominee.votes} total votes.`,
+          `Payment confirmed! ${data.quantity} vote(s) for "${data.nominee.name}" recorded.`,
           "success"
         );
         resetForm();
