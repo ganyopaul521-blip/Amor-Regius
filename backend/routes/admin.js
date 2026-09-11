@@ -97,21 +97,48 @@ router.get("/stats", async (req, res) => {
       `SELECT
          (SELECT COALESCE(SUM(votes), 0) FROM nominees) AS totalVotes,
          (SELECT COUNT(*) FROM categories) AS totalCategories,
-         (SELECT COUNT(*) FROM nominees) AS totalNominees`
+         (SELECT COUNT(*) FROM nominees) AS totalNominees,
+         (SELECT COALESCE(SUM(base_amount_ghs), 0) FROM vote_payments WHERE status = 'confirmed') AS totalRevenue`
     )
     .get();
 
-  const revenueSeries = await db
+  const ticketRevenueSeries = await db
     .prepare(
       `SELECT DATE(created_at) AS day,
               SUM(base_amount_ghs) AS revenue,
               SUM(quantity) AS tickets
        FROM ticket_orders
        WHERE status = 'confirmed'
-       GROUP BY DATE(created_at)
-       ORDER BY day ASC`
+       GROUP BY DATE(created_at)`
     )
     .all();
+
+  const voteRevenueSeries = await db
+    .prepare(
+      `SELECT DATE(created_at) AS day,
+              SUM(base_amount_ghs) AS revenue
+       FROM vote_payments
+       WHERE status = 'confirmed'
+       GROUP BY DATE(created_at)`
+    )
+    .all();
+
+  // Combined so the "Revenue Over Time" chart and the Total Revenue KPI
+  // agree with each other - every confirmed vote payment counts toward
+  // revenue here too, not just ticket orders.
+  const revenueByDay = new Map();
+  for (const row of ticketRevenueSeries) {
+    revenueByDay.set(row.day, { day: row.day, revenue: row.revenue, tickets: row.tickets });
+  }
+  for (const row of voteRevenueSeries) {
+    const existing = revenueByDay.get(row.day);
+    if (existing) {
+      existing.revenue += row.revenue;
+    } else {
+      revenueByDay.set(row.day, { day: row.day, revenue: row.revenue, tickets: 0 });
+    }
+  }
+  const revenueSeries = [...revenueByDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
 
   const paymentRequests = ticketTotals.totalOrders + votePaymentTotals.totalRequests;
   const paymentSuccessful = ticketTotals.confirmedOrders + votePaymentTotals.confirmed;
@@ -120,7 +147,9 @@ router.get("/stats", async (req, res) => {
 
   res.json({
     revenue: {
-      totalGhs: ticketTotals.totalRevenue,
+      totalGhs: ticketTotals.totalRevenue + voteAggregate.totalRevenue,
+      ticketRevenueGhs: ticketTotals.totalRevenue,
+      voteRevenueGhs: voteAggregate.totalRevenue,
       byTicketType: byTicketType.reduce((acc, row) => {
         acc[row.type] = { sold: row.sold, revenueGhs: row.revenue };
         return acc;
