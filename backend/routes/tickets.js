@@ -8,7 +8,7 @@ const router = express.Router();
 
 const PRICES = {
   single: Number(process.env.TICKET_SINGLE_PRICE_GHS || 150),
-  double: Number(process.env.TICKET_DOUBLE_PRICE_GHS || 280),
+  double: Number(process.env.TICKET_DOUBLE_PRICE_GHS || 260),
   executive: Number(process.env.TICKET_EXECUTIVE_PRICE_GHS || 180),
 };
 
