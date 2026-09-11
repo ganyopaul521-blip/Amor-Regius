@@ -1,21 +1,19 @@
-// Seeds award categories with placeholder nominees.
-// Edit the CATEGORIES list below with real nominee names, then run:
-//   npm run seed
+// Seeds award categories and nominees.
 require("dotenv").config();
 const db = require("./db");
 
 const CATEGORIES = [
   {
-    name: "Most Influential Member of the Year",
-    nominees: ["Nominee A", "Nominee B", "Nominee C", "Nominee D"],
+    name: "Most Committed Member",
+    nominees: ["Samuel", "Leonard", "Angela", "Paul"],
   },
   {
     name: "Department of the Year",
-    nominees: ["Department A", "Department B", "Department C"],
+    nominees: ["Music", "Media", "Ushering", "Prayer"],
   },
   {
     name: "Executive of the Year",
-    nominees: ["Executive A", "Executive B", "Executive C", "Executive D"],
+    nominees: ["Paul", "Leonard", "Angela"],
   },
 ];
 

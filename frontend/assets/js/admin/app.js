@@ -1264,6 +1264,8 @@ async function renderSettings() {
         <div class="admin-panel-head"><h2>Event Configuration</h2></div>
         <div class="settings-row"><div><div class="settings-row-label">Event Name</div></div><div>${escapeHtml(config.eventName)}</div></div>
         <div class="settings-row"><div><div class="settings-row-label">Date</div></div><div>${escapeHtml(config.eventDateLine)}</div></div>
+        <div class="settings-row"><div><div class="settings-row-label">Time</div></div><div>${escapeHtml(config.eventTime)}</div></div>
+        <div class="settings-row"><div><div class="settings-row-label">Venue</div></div><div>${escapeHtml(config.eventVenue)}</div></div>
         <div class="settings-row"><div><div class="settings-row-label">Organizer</div></div><div>${escapeHtml(config.orgName)}</div></div>
       </div>
       <div class="admin-panel">

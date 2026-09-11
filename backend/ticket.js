@@ -8,6 +8,8 @@ const EVENT_NAME = "Amor Regius";
 const EVENT_SUBTITLE = "Dinner & Awards Night";
 const ORG_NAME = "ROYALHOUSE CHAPEL STUDENTS ASSOCIATION — UNIVERSITY OF GHANA";
 const EVENT_DATE_LINE = "Sunday, 20th September 2026";
+const EVENT_TIME = "5:00 PM";
+const EVENT_VENUE = "Common Wealth Hall";
 
 const NAVY = "#0f1f3d";
 const GOLD = "#c9a227";
@@ -83,6 +85,12 @@ async function buildSvg({ orderId, clientReference, buyerName, ticketType, quant
   <text x="420" y="345" font-family="Georgia, serif" font-size="15" fill="#7a6f5c" letter-spacing="1">DATE</text>
   <text x="420" y="372" font-family="Georgia, serif" font-size="22" fill="${NAVY}">${escapeXml(EVENT_DATE_LINE)}</text>
 
+  <text x="60" y="417" font-family="Georgia, serif" font-size="15" fill="#7a6f5c" letter-spacing="1">VENUE</text>
+  <text x="60" y="444" font-family="Georgia, serif" font-size="22" fill="${NAVY}">${escapeXml(EVENT_VENUE)}</text>
+
+  <text x="420" y="417" font-family="Georgia, serif" font-size="15" fill="#7a6f5c" letter-spacing="1">TIME</text>
+  <text x="420" y="444" font-family="Georgia, serif" font-size="22" fill="${NAVY}">${escapeXml(EVENT_TIME)}</text>
+
   <!-- perforation -->
   <line x1="${stubX}" y1="0" x2="${stubX}" y2="${height}" stroke="${NAVY}" stroke-width="2" stroke-dasharray="10,10" opacity="0.5"/>
   <circle cx="${stubX}" cy="0" r="16" fill="${CREAM}" stroke="${GOLD}" stroke-width="2"/>
@@ -107,4 +115,4 @@ async function generateTicketPng(order) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-module.exports = { generateTicketPng, ticketIdFor, EVENT_NAME, EVENT_SUBTITLE, ORG_NAME, EVENT_DATE_LINE };
+module.exports = { generateTicketPng, ticketIdFor, EVENT_NAME, EVENT_SUBTITLE, ORG_NAME, EVENT_DATE_LINE, EVENT_TIME, EVENT_VENUE };

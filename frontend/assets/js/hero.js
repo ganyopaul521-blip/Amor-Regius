@@ -2,7 +2,7 @@
 // whatever photos exist in the gallery - see /api/gallery, populated from
 // admin.html's upload form), and a countdown to the real event date.
 
-const HERO_EVENT_DATE = new Date("2026-09-20T18:00:00Z"); // Sun 20 Sep 2026, 6pm - Ghana is UTC+0 year-round
+const HERO_EVENT_DATE = new Date("2026-09-20T17:00:00Z"); // Sun 20 Sep 2026, 5pm - Ghana is UTC+0 year-round
 const SLIDE_INTERVAL_MS = 3000;
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
