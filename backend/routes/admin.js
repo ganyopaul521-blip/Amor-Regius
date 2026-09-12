@@ -240,9 +240,13 @@ router.get("/votes", async (req, res) => {
 });
 
 // PATCH /api/admin/votes/:id - manual override for when a payment needs
-// correcting by hand. Mirrors the status-poll guard in routes/votes.js: the
-// nominee tally only moves on the transition out of 'pending', so this
-// can't double count.
+// correcting by hand. Symmetric on every transition: moving a payment INTO
+// 'confirmed' credits its vote(s) to the nominee, moving it OUT of
+// 'confirmed' (to pending or rejected) debits them back out. A previous
+// version only handled the pending->confirmed direction, silently leaving
+// stale votes behind whenever a confirmed payment was later corrected to
+// something else (or crediting nothing when a rejected one was corrected
+// to confirmed) - confirmed live on Paul Ganyo's tallies in two categories.
 router.patch("/votes/:id", async (req, res) => {
   const { status } = req.body || {};
   if (!["pending", "confirmed", "rejected"].includes(status)) {
@@ -255,20 +259,21 @@ router.patch("/votes/:id", async (req, res) => {
   }
 
   const apply = db.transaction(async (db) => {
-    // Same atomic claim as routes/votes.js's status poll - re-checks
-    // status = 'pending' fresh at write time instead of trusting the
-    // `payment` snapshot fetched above, so this can't double-credit votes
-    // if it ever races another confirmation of the same payment.
-    const update = await db
-      .prepare("UPDATE vote_payments SET status = ? WHERE id = ? AND status = 'pending'")
-      .run(status, payment.id);
+    // Re-read fresh inside the transaction rather than trusting the
+    // `payment` snapshot fetched above - this transaction serializes
+    // against any other write to this row, so this is race-safe.
+    const fresh = await db.prepare("SELECT status FROM vote_payments WHERE id = ?").get(payment.id);
+    if (!fresh) return; // deleted between the initial read and now
 
-    if (update.changes > 0 && status === "confirmed") {
+    const wasConfirmed = fresh.status === "confirmed";
+    const willBeConfirmed = status === "confirmed";
+
+    await db.prepare("UPDATE vote_payments SET status = ? WHERE id = ?").run(status, payment.id);
+
+    if (!wasConfirmed && willBeConfirmed) {
       await db.prepare("UPDATE nominees SET votes = votes + ? WHERE id = ?").run(payment.quantity, payment.nominee_id);
-    } else if (update.changes === 0) {
-      // Payment wasn't 'pending' (e.g. already confirmed/rejected) - still
-      // apply the requested status, just without touching the vote tally.
-      await db.prepare("UPDATE vote_payments SET status = ? WHERE id = ?").run(status, payment.id);
+    } else if (wasConfirmed && !willBeConfirmed) {
+      await db.prepare("UPDATE nominees SET votes = votes - ? WHERE id = ?").run(payment.quantity, payment.nominee_id);
     }
   });
   await apply();
