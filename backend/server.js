@@ -9,6 +9,12 @@ const cors = require("cors");
 // (like local dev) just logs "already exist" and changes nothing.
 require("./seed");
 
+// Auto-rejects any ticket order or vote payment still 'pending' more than
+// 10 minutes after creation (e.g. a buyer closed the Paystack popup without
+// finishing) - nothing else would ever revisit it once the frontend's own
+// 90s polling window gives up.
+require("./expirePending").startExpiryLoop();
+
 const paystack = require("./paystack");
 const mailer = require("./mailer");
 const { EVENT_NAME, EVENT_SUBTITLE, ORG_NAME, EVENT_DATE_LINE, EVENT_TIME, EVENT_VENUE } = require("./ticket");
