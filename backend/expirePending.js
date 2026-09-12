@@ -5,7 +5,7 @@
 // this, an abandoned payment would stay "pending" forever.
 const db = require("./db");
 
-const STALE_AFTER_MINUTES = 10;
+const STALE_AFTER_MINUTES = 3;
 
 async function expireStalePending() {
   const tickets = await db
