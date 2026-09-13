@@ -60,10 +60,10 @@
           </div>
 
           <div class="field">
-            <label>Number of Votes</label>
+            <label for="qty-value">Number of Votes</label>
             <div class="qty-row">
               <button type="button" id="qty-minus" aria-label="Decrease votes">-</button>
-              <span id="qty-value">1</span>
+              <input type="number" id="qty-value" inputmode="numeric" min="1" max="1000" step="1" value="1" aria-label="Number of votes" />
               <button type="button" id="qty-plus" aria-label="Increase votes">+</button>
             </div>
           </div>

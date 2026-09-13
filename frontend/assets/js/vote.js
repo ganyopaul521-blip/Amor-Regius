@@ -105,16 +105,31 @@ async function loadNominees() {
   }
 }
 
+const MAX_VOTES = 1000;
+
 document.getElementById("qty-minus").addEventListener("click", () => {
   quantity = Math.max(1, quantity - 1);
-  qtyValueEl.textContent = quantity;
+  qtyValueEl.value = quantity;
   updateSummary();
 });
 
 document.getElementById("qty-plus").addEventListener("click", () => {
-  quantity = Math.min(100, quantity + 1);
-  qtyValueEl.textContent = quantity;
+  quantity = Math.min(MAX_VOTES, quantity + 1);
+  qtyValueEl.value = quantity;
   updateSummary();
+});
+
+// Lets a voter type an exact number directly instead of only stepping one
+// at a time - clamped to the same 1-1000 range, falling back to 1 for
+// anything invalid (empty, non-numeric, negative) rather than accepting it.
+qtyValueEl.addEventListener("input", () => {
+  const parsed = parseInt(qtyValueEl.value, 10);
+  quantity = Number.isFinite(parsed) ? Math.min(MAX_VOTES, Math.max(1, parsed)) : 1;
+  updateSummary();
+});
+
+qtyValueEl.addEventListener("blur", () => {
+  qtyValueEl.value = quantity;
 });
 
 function resetForm() {
@@ -122,7 +137,7 @@ function resetForm() {
   selectedNomineeId = null;
   selectedNomineeName = "";
   quantity = 1;
-  qtyValueEl.textContent = "1";
+  qtyValueEl.value = "1";
   selectedNomineeEl.textContent = "None selected yet — click a nominee above.";
   updateSummary();
 }

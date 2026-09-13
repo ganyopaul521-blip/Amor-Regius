@@ -40,8 +40,8 @@ router.post("/", async (req, res) => {
   const { nomineeId, quantity, voterName, voterPhone, voterEmail } = req.body || {};
 
   const qty = Number(quantity);
-  if (!nomineeId || !Number.isInteger(qty) || qty < 1) {
-    return res.status(400).json({ error: "nomineeId and a positive integer quantity are required" });
+  if (!nomineeId || !Number.isInteger(qty) || qty < 1 || qty > 1000) {
+    return res.status(400).json({ error: "nomineeId and a quantity between 1 and 1000 are required" });
   }
   if (!voterEmail || !EMAIL_RE.test(String(voterEmail).trim())) {
     return res.status(400).json({ error: "A valid voterEmail is required to process payment" });

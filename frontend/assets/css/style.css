@@ -1351,6 +1351,16 @@ form select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.qty-row input {
+  width: 80px;
+  flex: 0 0 auto;
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .summary-row {
   display: flex;
   justify-content: space-between;
