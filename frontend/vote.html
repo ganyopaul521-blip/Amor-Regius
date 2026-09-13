@@ -46,7 +46,7 @@
         <div class="flourish-divider">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L15 12 L12 22 L9 12 Z" fill="currentColor"/></svg>
         </div>
-        <p class="muted">Select a nominee, choose how many votes to cast, then pay by card or Mobile Money to submit. Each vote costs <strong id="vote-price">GHS 1</strong>.</p>
+        <p class="muted">Select one nominee per category (you can vote in as many categories as you like), choose how many votes to cast, then pay once by card or Mobile Money. Each vote costs <strong id="vote-price">GHS 1</strong>.</p>
         <div id="categories"></div>
       </div>
 
@@ -55,12 +55,12 @@
         <div id="vote-alert"></div>
         <form id="vote-form">
           <div class="field">
-            <label>Selected Nominee</label>
-            <div id="selected-nominee" class="muted">None selected yet — click a nominee above.</div>
+            <label>Selected Nominees</label>
+            <div id="selected-nominees" class="muted">None selected yet — click a nominee above.</div>
           </div>
 
           <div class="field">
-            <label for="qty-value">Number of Votes</label>
+            <label for="qty-value">Number of Votes (per nominee selected)</label>
             <div class="qty-row">
               <button type="button" id="qty-minus" aria-label="Decrease votes">-</button>
               <input type="number" id="qty-value" inputmode="numeric" min="1" max="1000" step="1" value="1" aria-label="Number of votes" />

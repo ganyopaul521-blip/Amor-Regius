@@ -1,10 +1,13 @@
 let votePrice = 1;
-let selectedNomineeId = null;
-let selectedNomineeName = "";
 let quantity = 1;
 let pollTimer = null;
 let paystackPublicKey = null;
 let paystackFeeRate = 0;
+
+// categoryId -> { nomineeId, nomineeName, categoryName } - one nominee per
+// category, but any number of categories can be selected at once so a
+// voter can cover several award categories in a single payment.
+const selectedByCategory = new Map();
 
 // Needed before the Paystack popup can open - fetched once on page load.
 // paystackFeeRate lets the summary show the same fee-inclusive total the
@@ -27,7 +30,7 @@ function amountWithFeePassedOn(netGhs) {
 }
 
 const categoriesEl = document.getElementById("categories");
-const selectedNomineeEl = document.getElementById("selected-nominee");
+const selectedNomineesEl = document.getElementById("selected-nominees");
 const qtyValueEl = document.getElementById("qty-value");
 const summarySubtotalEl = document.getElementById("summary-subtotal");
 const summaryFeeEl = document.getElementById("summary-fee");
@@ -39,13 +42,21 @@ const statusBox = document.getElementById("payment-status");
 const statusText = document.getElementById("payment-status-text");
 
 function updateSummary() {
-  const subtotal = votePrice * quantity;
+  const subtotal = votePrice * quantity * selectedByCategory.size;
   const total = amountWithFeePassedOn(subtotal);
   const fee = Math.round((total - subtotal) * 100) / 100;
 
   summarySubtotalEl.textContent = `GHS ${subtotal.toFixed(2)}`;
   summaryFeeEl.textContent = `GHS ${fee.toFixed(2)}`;
   summaryTotalEl.textContent = `GHS ${total.toFixed(2)}`;
+
+  if (selectedByCategory.size === 0) {
+    selectedNomineesEl.textContent = "None selected yet — click a nominee above.";
+  } else {
+    selectedNomineesEl.innerHTML = [...selectedByCategory.values()]
+      .map((s) => `<div>${s.nomineeName} — <span class="muted">${s.categoryName}</span></div>`)
+      .join("");
+  }
 }
 
 function showAlert(message, type) {
@@ -74,16 +85,23 @@ function renderCategories(categories) {
       row.className = "nominee-row";
       row.dataset.id = nominee.id;
       row.dataset.name = nominee.name;
-      if (nominee.id === selectedNomineeId) row.classList.add("selected");
+      if (selectedByCategory.get(cat.id)?.nomineeId === nominee.id) row.classList.add("selected");
 
       row.innerHTML = `<span class="name">${nominee.name}</span>`;
 
       row.addEventListener("click", () => {
-        selectedNomineeId = nominee.id;
-        selectedNomineeName = nominee.name;
-        document.querySelectorAll(".nominee-row").forEach((r) => r.classList.remove("selected"));
-        row.classList.add("selected");
-        selectedNomineeEl.textContent = `${nominee.name} — ${cat.name}`;
+        const current = selectedByCategory.get(cat.id);
+        const rowsInCategory = block.querySelectorAll(".nominee-row");
+        if (current?.nomineeId === nominee.id) {
+          // clicking the already-selected nominee again deselects this category
+          selectedByCategory.delete(cat.id);
+          row.classList.remove("selected");
+        } else {
+          selectedByCategory.set(cat.id, { nomineeId: nominee.id, nomineeName: nominee.name, categoryName: cat.name });
+          rowsInCategory.forEach((r) => r.classList.remove("selected"));
+          row.classList.add("selected");
+        }
+        updateSummary();
       });
 
       block.appendChild(row);
@@ -134,15 +152,19 @@ qtyValueEl.addEventListener("blur", () => {
 
 function resetForm() {
   form.reset();
-  selectedNomineeId = null;
-  selectedNomineeName = "";
+  selectedByCategory.clear();
   quantity = 1;
   qtyValueEl.value = "1";
-  selectedNomineeEl.textContent = "None selected yet — click a nominee above.";
   updateSummary();
 }
 
-function pollPaymentStatus(paymentId, clientReference) {
+function resetSubmitUi() {
+  statusBox.classList.add("hidden");
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Pay Now";
+}
+
+function pollPaymentStatus(clientReference) {
   const startedAt = Date.now();
   const TIMEOUT_MS = 90_000;
 
@@ -150,21 +172,19 @@ function pollPaymentStatus(paymentId, clientReference) {
     if (Date.now() - startedAt > TIMEOUT_MS) {
       stopPolling();
       statusText.textContent =
-        "Still waiting for confirmation. If you completed the payment, your vote will count shortly.";
+        "Still waiting for confirmation. If you completed the payment, your vote(s) will count shortly.";
       submitBtn.disabled = false;
       submitBtn.textContent = "Pay Now";
       return;
     }
 
     try {
-      const data = await apiGet(`/votes/${paymentId}/status?ref=${encodeURIComponent(clientReference)}`);
+      const data = await apiGet(`/votes/status?ref=${encodeURIComponent(clientReference)}`);
       if (data.status === "confirmed") {
         stopPolling();
         statusBox.classList.add("hidden");
-        showAlert(
-          `Payment confirmed! ${data.quantity} vote(s) for "${data.nominee.name}" recorded.`,
-          "success"
-        );
+        const summary = data.selections.map((s) => `${s.quantity} vote(s) for "${s.nominee.name}"`).join(", ");
+        showAlert(`Payment confirmed! ${summary} recorded.`, "success");
         resetForm();
         submitBtn.disabled = false;
         submitBtn.textContent = "Pay Now";
@@ -183,18 +203,12 @@ function pollPaymentStatus(paymentId, clientReference) {
   }, 3000);
 }
 
-function resetSubmitUi() {
-  statusBox.classList.add("hidden");
-  submitBtn.disabled = false;
-  submitBtn.textContent = "Pay Now";
-}
-
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   alertEl.innerHTML = "";
 
-  if (!selectedNomineeId) {
-    showAlert("Please select a nominee first.", "error");
+  if (selectedByCategory.size === 0) {
+    showAlert("Please select at least one nominee first.", "error");
     return;
   }
   if (!paystackPublicKey) {
@@ -210,9 +224,9 @@ form.addEventListener("submit", async (e) => {
   submitBtn.textContent = "Preparing vote...";
 
   try {
-    const { paymentId, clientReference, amountGhs } = await apiPost("/votes", {
-      nomineeId: selectedNomineeId,
-      quantity,
+    const selections = [...selectedByCategory.values()].map((s) => ({ nomineeId: s.nomineeId, quantity }));
+    const { clientReference, amountGhs } = await apiPost("/votes", {
+      selections,
       voterName,
       voterEmail,
       voterPhone,
@@ -224,12 +238,12 @@ form.addEventListener("submit", async (e) => {
       amount: Math.round(amountGhs * 100),
       currency: "GHS",
       ref: clientReference,
-      metadata: { paymentId, nomineeId: selectedNomineeId, voterName },
+      metadata: { selections, voterName },
       callback: function () {
         statusBox.classList.remove("hidden");
         statusText.textContent = `Confirming your payment... (GHS ${amountGhs})`;
         submitBtn.textContent = "Confirming payment...";
-        pollPaymentStatus(paymentId, clientReference);
+        pollPaymentStatus(clientReference);
       },
       onClose: function () {
         resetSubmitUi();
