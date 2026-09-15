@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const paystack = require("../paystack");
+const { settleTicketOrder } = require("../ticketSettlement");
 const { generateTicketPng, EVENT_NAME, EVENT_SUBTITLE } = require("../ticket");
 const mailer = require("../mailer");
 
@@ -145,23 +146,10 @@ router.get("/:id/status", async (req, res) => {
   }
 
   let current = order;
-  if (order.status === "pending") {
-    try {
-      const result = await paystack.verifyTransaction(order.client_reference);
-      // A successful Paystack transaction for a *different* amount than this
-      // order expects (e.g. a tampered client-side popup call) is never
-      // trusted as a real confirmation - amount_ghs was fixed server-side at
-      // order creation, before any client-controlled value existed.
-      const amountMatches = result.amountGhs == null || Math.abs(result.amountGhs - order.amount_ghs) < 0.01;
-      const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
-
-      await db.prepare(
-        "UPDATE ticket_orders SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE id = ?"
-      ).run(finalStatus, result.transactionId, JSON.stringify(result), order.id);
-      current = await db.prepare("SELECT * FROM ticket_orders WHERE id = ?").get(order.id);
-    } catch (err) {
-      // Paystack status check hiccup - report last known state, frontend will poll again
-    }
+  try {
+    current = await settleTicketOrder(order);
+  } catch (err) {
+    // Paystack status check hiccup - report last known state, frontend will poll again
   }
 
   const emailResult = await maybeSendTicket(current);

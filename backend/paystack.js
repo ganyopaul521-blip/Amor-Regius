@@ -44,7 +44,16 @@ async function verifyTransaction(reference) {
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(`Paystack verify failed (HTTP ${res.status}): ${body.message || "unknown error"}`);
+    const err = new Error(`Paystack verify failed (HTTP ${res.status}): ${body.message || "unknown error"}`);
+    // A 400 "not found" means this reference was never actually used for a
+    // real payment attempt (e.g. the buyer closed the page before the
+    // popup ever opened) - Paystack has zero record of it, so no money
+    // could possibly have moved. Callers can safely treat this as a genuine
+    // rejection rather than a transient error to retry.
+    if (res.status === 400 && /not found/i.test(body.message || "")) {
+      err.code = "REFERENCE_NOT_FOUND";
+    }
+    throw err;
   }
 
   const data = body.data || {};

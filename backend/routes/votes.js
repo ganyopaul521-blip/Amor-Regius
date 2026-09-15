@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const paystack = require("../paystack");
+const { settleVoteBatch } = require("../voteSettlement");
 const { EVENT_NAME } = require("../ticket");
 
 const router = express.Router();
@@ -127,43 +128,10 @@ router.get("/status", async (req, res) => {
   }
 
   let current = batch;
-  if (batch[0].status === "pending") {
-    try {
-      const result = await paystack.verifyTransaction(ref);
-      // Anti-tamper guard, same principle as tickets.js: recompute the
-      // expected total fresh from base_amount_ghs (fixed server-side at
-      // creation) rather than trusting any client-controlled or previously
-      // stored amount - never trust a single row's amount_ghs share alone,
-      // since rounding could make individual shares an imprecise match.
-      const combinedBaseGhs = batch.reduce((sum, p) => sum + p.base_amount_ghs, 0);
-      const expectedAmountGhs = paystack.amountWithFeePassedOn(combinedBaseGhs);
-      const amountMatches = result.amountGhs == null || Math.abs(result.amountGhs - expectedAmountGhs) < 0.01;
-      const finalStatus = result.status === "confirmed" && !amountMatches ? "rejected" : result.status;
-
-      const apply = db.transaction(async (db) => {
-        // Atomically claim every row in this batch at once - re-checked
-        // fresh against the database (status = 'pending'), not the `batch`
-        // snapshot read above, closing the same race class fixed for the
-        // single-nominee flow. One statement covers the whole batch since
-        // they all share this client_reference.
-        const update = await db
-          .prepare(
-            "UPDATE vote_payments SET status = ?, financial_transaction_id = COALESCE(?, financial_transaction_id), last_status_payload = ? WHERE client_reference = ? AND status = 'pending'"
-          )
-          .run(finalStatus, result.transactionId, JSON.stringify(result), ref);
-
-        if (update.changes > 0 && finalStatus === "confirmed") {
-          for (const p of batch) {
-            await db.prepare("UPDATE nominees SET votes = votes + ? WHERE id = ?").run(p.quantity, p.nominee_id);
-          }
-        }
-      });
-      await apply();
-
-      current = await db.prepare("SELECT * FROM vote_payments WHERE client_reference = ?").all(ref);
-    } catch (err) {
-      // Paystack status check hiccup - report last known state, frontend will poll again
-    }
+  try {
+    current = await settleVoteBatch(ref);
+  } catch (err) {
+    // Paystack status check hiccup - report last known state, frontend will poll again
   }
 
   const nominees = await Promise.all(
